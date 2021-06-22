@@ -193,10 +193,20 @@ generate-structs: ## Update generated code
 build-generate-copy:
 	cd ./tools/nomad-generate-copy && go install .
 
+# TODO: move into 'bootstrap' target
+.PHONY: build-generate-equals
+build-generate-equals:
+	cd ./tools/nomad-generate-equals && go install .
+
 # TODO: remove as this will be covered by generate-structs
 .PHONY: generate-copy
 generate-copy: build-generate-copy
 	go generate -run "nomad-generate-copy" ./nomad/structs
+
+# TODO: remove as this will be covered by generate-structs
+.PHONY: generate-equals
+generate-equals: build-generate-equals
+	go generate -run "nomad-generate-equals" ./nomad/structs
 
 .PHONY: proto
 proto:
