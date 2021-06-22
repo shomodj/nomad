@@ -3937,8 +3937,7 @@ const (
 	JobTrackedScalingEvents = 20
 )
 
-//go:generate nomad-generate-copy -type Job -exclude Stop -exclude CreateIndex
-//go:generate nomad-generate-copy -type Node -exclude Stop -exclude CreateIndex
+//go:generate nomad-generate-copy -type Node -type Job -exclude Job.Stop -exclude Node.CreateIndex
 
 //go: generate nomad-generate -methods copy,equals,all -type Job -exclude Stop -exclude CreateIndex
 
