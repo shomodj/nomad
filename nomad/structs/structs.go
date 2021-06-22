@@ -3937,6 +3937,9 @@ const (
 	JobTrackedScalingEvents = 20
 )
 
+//go:generate nomad-generate-copy -type Job -exclude Stop -exclude CreateIndex
+//go:generate nomad-generate-copy -type Node -exclude Stop -exclude CreateIndex
+
 // Job is the scope of a scheduling request to Nomad. It is the largest
 // scoped object, and is a named collection of task groups. Each task group
 // is further composed of tasks. A task group (TG) is the unit of scheduling

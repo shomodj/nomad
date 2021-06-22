@@ -188,6 +188,16 @@ generate-structs: ## Update generated code
 	@echo "--> Running go generate..."
 	@go generate $(LOCAL_PACKAGES)
 
+# TODO: move into 'bootstrap' target
+.PHONY: build-generate-copy
+build-generate-copy:
+	cd ./tools/nomad-generate-copy && go install .
+
+# TODO: remove as this will be covered by generate-structs
+.PHONY: generate-copy
+generate-copy: build-generate-copy
+	go generate -run "nomad-generate-copy" ./nomad/structs
+
 .PHONY: proto
 proto:
 	@echo "--> Generating proto bindings..."
