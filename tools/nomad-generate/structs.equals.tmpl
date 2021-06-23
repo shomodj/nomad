@@ -1,5 +1,19 @@
 package structs
 
-{{ range $key, $targetType := .targets -}}
-    {{$targetType.generateEquals}}
-{{-end}}
+{{ range $targetType := .Targets -}}
+func ({{$targetType.Abbr}} *{{$targetType.Name}}) Equals(other *{{$targetType.Name}}) bool {
+{{- range $field := .Fields }}
+    {{- if $field.IsPrimitive }}
+    if {{$targetType.Abbr}}.{{$field.Name}} != other.{{$field.Name}} { return false }
+    {{- end}}
+    {{- if $field.IsStruct }}
+    if !{{$targetType.Abbr}}.{{$field.Name}}.Equals(other.{{$field.Name}}) { return false }
+    {{- end}}
+    {{- if $field.IsPointer }}
+    if !{{$targetType.Abbr}}.{{$field.Name}}.Equals(&other.{{$field.Name}}) { return false }
+    {{- end}}
+{{- end }}
+
+    return true
+}
+{{- end}}

@@ -32,8 +32,8 @@ func TestFieldResolveType(t *testing.T) {
 
 	var jobTarget *TargetType
 
-	for _, target := range g.targets {
-		if target.name == "Job" {
+	for _, target := range g.Targets {
+		if target.Name == "Job" {
 			jobTarget = target
 			break
 		}
@@ -43,8 +43,8 @@ func TestFieldResolveType(t *testing.T) {
 		log.Fatal("unable to locate job target")
 	}
 
-	for _, field := range jobTarget.fields {
-		t.Log(fmt.Sprintf("%s: %s", field.name, field.typeName))
+	for _, field := range jobTarget.Fields {
+		t.Log(fmt.Sprintf("%s: %s", field.Name, field.TypeName))
 	}
 
 	fmt.Println("TestFieldResolveType complete")

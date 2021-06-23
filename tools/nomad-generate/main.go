@@ -1,15 +1,17 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 )
 
 var filePath string
@@ -35,7 +37,7 @@ func main() {
 }
 
 func run(args []string) {
-	flag.Var(&excludedFieldFlags, "exclude", "list of fields to exclude from Copy")
+	flag.Var(&excludedFieldFlags, "exclude", "list of Fields to exclude from Copy")
 	flag.Var(&typeNameFlags, "type", "types for which to generate Copy methodFlags")
 	flag.Var(&methodFlags, "method", "methodFlags to generate - defaults to all")
 	flag.Parse()
@@ -81,14 +83,8 @@ func run(args []string) {
 // Generator holds the state of the analysis. Primarily used to buffer
 // the output for format.Source.
 type Generator struct {
-	buf            bytes.Buffer // Accumulated output.
-	file           *ast.File
-	targets 	  []*TargetType
-	//	pkg            *Package // Package we are scanning.
-}
-
-func (g *Generator) Printf(format string, args ...interface{}) {
-	_, _  = fmt.Fprintf(&g.buf, format, args...)
+	file    *ast.File
+	Targets []*TargetType
 }
 
 func (g *Generator) parseFile(filepath string) error {
@@ -102,106 +98,134 @@ func (g *Generator) parseFile(filepath string) error {
 }
 
 func (g *Generator) generate() {
-	// Build targets
+	// Build Targets
 	for _, typeName := range typeNameFlags {
-		t := &TargetType{name: typeName}
-		g.targets = append(g.targets, t)
+		t := &TargetType{Name: typeName}
+		g.Targets = append(g.Targets, t)
 
 		if g.file != nil {
 			ast.Inspect(g.file, t.visitFields)
 		}
 	}
 
-	err := g.renderTemplates()
-	if err != nil {
-		fmt.Printf("could not render templates: %v\n", err)
+	var err error
+	//if err = g.render("copy"); err != nil {
+	//	fmt.Printf("could not render copy: %v\n", err)
+	//}
+
+	if err = g.render("equals"); err != nil {
+		fmt.Printf("could not render equals: %v\n", err)
 	}
+
+	//if err = g.render("diff"); err != nil {
+	//	fmt.Printf("could not render diff: %v\n", err)
+	//}
+	//
+	//if err = g.render("merge"); err != nil {
+	//	fmt.Printf("could not render merge: %v\n", err)
+	//}
 }
 
-func (g *Generator) renderTemplates() error {
+func (g * Generator) render(targetFunc string) error {
 	var err error
-	if err = g.renderEquals(); err != nil {
+	var file *os.File
+
+	if file, err = os.OpenFile(fmt.Sprintf("../../nomad/structs/structs.%s.go", targetFunc), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666); err != nil {
+		return err
+	}
+
+	w := bufio.NewWriter(file)
+
+	if err = g.write(w, fmt.Sprintf("./structs.%s.tmpl", targetFunc), g); err != nil {
+		return err
+	}
+
+	if err = w.Flush(); err != nil {
+		return err
+	}
+
+	if err = file.Close(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (g * Generator) renderEquals() error {
-
-	return nil
+func (g * Generator) write(w io.Writer, fileName string, data interface{}) error {
+	tmpl, err := template.ParseFiles(fileName)
+	if err != nil {
+		return err
+	}
+	return tmpl.Execute(w, data)
 }
 
 type TargetField struct {
-	name string
-	field *ast.Field
-	typeName string
+	Name     string
+	Field    *ast.Field
+	TypeName string
 }
 
 func (f *TargetField) IsPrimitive() bool {
-	return !(f.IsPointer() || f.IsStruct() || !f.IsArray())
+	return !(f.IsPointer() || f.IsStruct() || f.IsArray())
 }
 
 func (f *TargetField) IsArray() bool {
-	return f.typeName == "array"
+	return f.TypeName == "array"
 }
 
 func (f *TargetField) IsStruct() bool {
-	return f.typeName == "struct"
+	return f.TypeName == "struct"
 }
 
 func (f *TargetField) IsPointer() bool {
-	return f.typeName == "pointer"
+	return f.TypeName == "pointer"
 }
 
 func (f *TargetField) resolveType(node ast.Node) bool {
-	//if f.name == "Update" {
-	//	fmt.Println(fmt.Sprintf("%+v", node))
-	//}
-	if len (f.typeName) < 1 {
+	if len (f.TypeName) < 1 {
 		switch node.(type) {
 		case *ast.Field:
-			if node.(*ast.Field).Names[0].Name == f.name {
+			if node.(*ast.Field).Names[0].Name == f.Name {
 				switch node.(*ast.Field).Type.(type) {
 				case *ast.Ident:
-					f.typeName = node.(*ast.Field).Type.(*ast.Ident).Name
-					// For direct struct references (not pointers) the type name will be returned
+					f.TypeName = node.(*ast.Field).Type.(*ast.Ident).Name
+					// For direct struct references (not pointers) the type Name will be returned
 					// so we correct it here.
 					if !f.IsPrimitive() {
-						f.typeName = "struct"
+						f.TypeName = "struct"
 					}
 				case *ast.ArrayType, *ast.MapType:
-					f.typeName = "array"
+					f.TypeName = "array"
 				case *ast.StructType:
-					f.typeName = "struct"
+					f.TypeName = "struct"
 				case *ast.StarExpr:
-					f.typeName = "pointer"
+					f.TypeName = "pointer"
 				}
 			}
 		default:
-			f.typeName = fmt.Sprintf("%+v", node)
+			f.TypeName = fmt.Sprintf("%+v", node)
 		}
 	}
 	return true
 }
 
 type TargetType struct {
-	name           string // name of the type we're generating methods for
+	Name           string // Name of the type we're generating methods for
 	methods        []string
 	excludedFields []string
-	fields         []*TargetField
+	Fields         []*TargetField
 }
 
 func (t *TargetType) Abbr() string {
-	return strings.ToLower(string(t.name[0]))
+	return strings.ToLower(string(t.Name[0]))
 }
 
 func (t *TargetType) Methods() [] string {
 	if t.methods == nil {
 		var m []string
 		for _, method := range methodFlags {
-			if strings.Contains(method, t.name) {
-				md := strings.TrimPrefix(method, fmt.Sprintf("%s.", t.name))
+			if strings.Contains(method, t.Name) {
+				md := strings.TrimPrefix(method, fmt.Sprintf("%s.", t.Name))
 				m = append(m, md)
 			}
 		}
@@ -220,8 +244,8 @@ func (t *TargetType) ExcludedFields() [] string {
 	if t.excludedFields == nil {
 		var e []string
 		for _, excludedField := range excludedFieldFlags {
-			if strings.Index(excludedField, t.name) > -1 {
-				e = append(e, strings.TrimPrefix(excludedField, fmt.Sprintf("%s.", t.name)))
+			if strings.Index(excludedField, t.Name) > -1 {
+				e = append(e, strings.TrimPrefix(excludedField, fmt.Sprintf("%s.", t.Name)))
 			}
 		}
 
@@ -238,12 +262,12 @@ func (t *TargetType) ExcludedFields() [] string {
 func (t *TargetType) GenEqualsForValues() string {
 	builder := strings.Builder{}
 
-	for _, field := range t.fields {
+	for _, field := range t.Fields {
 		builder.WriteString(fmt.Sprintf(
 			"\tif %s.%s != instance.%s return false\n",
 			t.Abbr(),
-			field.name,
-			field.name))
+			field.Name,
+			field.Name))
 	}
 
 	return builder.String()
@@ -253,19 +277,15 @@ func (t *TargetType) visitFields(node ast.Node) bool {
 	switch node.(type) {
 	case *ast.TypeSpec:
 		typeSpec := node.(*ast.TypeSpec)
-		if typeSpec.Name.Name == t.name {
+		if typeSpec.Name.Name == t.Name {
 			expr := typeSpec.Type.(*ast.StructType)
 			for _, field := range expr.Fields.List {
-				if field.Names[0].Name == "Stop" {
-					fmt.Println("found")
-				}
-
 				if t.fieldIsExcluded(field.Names[0].Name) {
 					continue
 				}
 
-				targetField := &TargetField{name: field.Names[0].Name, field: field}
-				t.fields = append(t.fields, targetField)
+				targetField := &TargetField{Name: field.Names[0].Name, Field: field}
+				t.Fields = append(t.Fields, targetField)
 				ast.Inspect(field, targetField.resolveType)
 			}
 		}
@@ -283,11 +303,3 @@ func (t *TargetType) fieldIsExcluded(name string) bool {
 
 	return false
 }
-
-// Equals function template. Expects to be fed lower case first letter of type,
-// and type name x2. TODO: avoid passing type name 2x
-const equalsTmpl = `func (%s *%s) Equals(instance %s) bool {
-%s
-	return true
-}
-`
