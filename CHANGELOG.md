@@ -1,5 +1,9 @@
 ## 1.1.3 (Unreleased)
 
+IMPROVEMENTS:
+
+* consul/connect: automatically set CONSUL_TLS_SERVER_NAME for connect native tasks [[GH-10804](https://github.com/hashicorp/nomad/issues/10804)]
+
 ## 1.1.2 (June 22, 2021)
 
 IMPROVEMENTS:
