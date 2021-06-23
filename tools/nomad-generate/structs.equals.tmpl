@@ -1,0 +1,5 @@
+package structs
+
+{{ range $key, $targetType := .targets -}}
+    {{$targetType.generateEquals}}
+{{-end}}

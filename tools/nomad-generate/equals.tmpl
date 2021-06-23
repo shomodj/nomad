@@ -1,0 +1,15 @@
+func ({{.Abbr}} *.{{name}}) Equals(instance {{.name}}) bool {
+{{ range $key, $field := .fields }}
+    {{- if .IsPrimitive($field)}}
+        if {{.Abbr}}.{{$field.name}} != instance.{{$field.name}} return false
+    {{end}}
+    {{- if .IsStruct($field)}}
+        if !{{.Abbr}}.{{$field.name}}.Equals(instance.{{$field.name}}) return false
+    {{end}}
+    {{- if .IsPointer($field)}}
+        if !*{{.Abbr}}.{{$field.name}}.Equals(*instance.{{$field.name}}) return false
+    {{end}}
+{{ end }}
+
+    return true
+}
