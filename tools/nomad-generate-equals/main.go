@@ -76,7 +76,7 @@ func run(args []string) {
 type Generator struct {
 	buf            bytes.Buffer // Accumulated output.
 	file           *ast.File
-	targets 	  []TargetType
+	targets 	  []*TargetType
 	//	pkg            *Package // Package we are scanning.
 }
 
@@ -96,51 +96,89 @@ func (g *Generator) parseFile(filepath string) error {
 
 func (g *Generator) generate() {
 	for _, typeName := range typeNameFlags {
-		t := &TargetType{Name: typeName}
-		if g.file != nil {
-			ast.Inspect(g.file, t.gatherFields)
+		t := &TargetType{name: typeName}
 
-			for _, methodName := range t.Methods() {
-				if methodName == "equals" {
+		if len(t.Methods()) > 0 {
+			g.targets = append(g.targets, t)
+			if g.file != nil {
+				ast.Inspect(g.file, t.gatherFields)
+				if t.generateAll() {
+					g.generateCopy(t)
 					g.generateEquals(t)
+					g.generateDiff(t)
+					g.generateMerge(t)
+				} else {
+					for _, methodName := range t.Methods() {
+						switch strings.ToLower(methodName) {
+						case  "copy":
+							g.generateCopy(t)
+						case  "equals":
+							g.generateEquals(t)
+						case  "diff":
+							g.generateDiff(t)
+						case  "merge":
+							g.generateMerge(t)
+						}
+					}
 				}
 			}
 		}
 	}
 }
 
+func (g *Generator) generateCopy(t *TargetType) {
+	fmt.Printf("generating Copy for %s\n", t.name)
+}
+
 func (g *Generator) generateEquals(t *TargetType) {
-	fmt.Printf("generating Equals for %s\n", t.Name)
+	fmt.Printf("generating Equals for %s\n", t.name)
 
 	if len(t.fields) > 0 {
 		txt := fmt.Sprintf(
 			equalsTmpl,
 			t.Abbr(),
-			t.Name,
-			t.Name,
+			t.name,
+			t.name,
 			t.GenEqualsForValues())
 		fmt.Println(txt)
 		fmt.Println(txt)
 	}
 }
 
-type TargetType struct {
-	Name string // Name of the type we're generating methods for
-	methods []string
-	excludedFields []string
-	fields []string
+func (g *Generator) generateDiff(t *TargetType) {
+	fmt.Printf("generating Diff for %s\n", t.name)
 }
 
+func (g *Generator) generateMerge(t *TargetType) {
+	fmt.Printf("generating Merge for %s\n", t.name)
+}
+
+type TargetType struct {
+	name           string // name of the type we're generating methods for
+	methods        []string
+	excludedFields []string
+	fields         []string
+}
+
+func (t *TargetType) generateAll() bool {
+	for _, method := range t.Methods() {
+		if strings.ToLower(method) == "all" {
+			return true
+		}
+	}
+	return false
+}
 func (t *TargetType) Abbr() string {
-	return strings.ToLower(string(t.Name[0]))
+	return strings.ToLower(string(t.name[0]))
 }
 
 func (t *TargetType) Methods() [] string {
 	if t.methods == nil {
 		var m []string
 		for _, method := range methodFlags {
-			if strings.Index(method, t.Name) == -1 {
-				m = append(m, strings.TrimPrefix(fmt.Sprintf("%s.", t.Name), method))
+			if strings.Contains(method, t.name) {
+				md := strings.TrimPrefix(method, fmt.Sprintf("%s.", t.name))
+				m = append(m, md)
 			}
 		}
 
@@ -158,8 +196,8 @@ func (t *TargetType) ExcludedFields() [] string {
 	if t.excludedFields == nil {
 		var e []string
 		for _, excludedField := range excludedFieldFlags {
-			if strings.Index(excludedField, t.Name) == -1 {
-				e = append(e, strings.TrimPrefix(fmt.Sprintf("%s.", t.Name), excludedField))
+			if strings.Index(excludedField, t.name) == -1 {
+				e = append(e, strings.TrimPrefix(fmt.Sprintf("%s.", t.name), excludedField))
 			}
 		}
 
@@ -187,13 +225,12 @@ func (t *TargetType) GenEqualsForValues() string {
 	return builder.String()
 }
 
-
 func (t *TargetType) gatherFields(node ast.Node) bool {
 	var s string
 	switch node.(type) {
 	case *ast.TypeSpec:
 		typeSpec := node.(*ast.TypeSpec)
-		if typeSpec.Name.Name == t.Name {
+		if typeSpec.Name.Name == t.name {
 			s = typeSpec.Name.Name
 			fmt.Printf("%#v\n", typeSpec.Type)
 			expr := typeSpec.Type.(*ast.StructType)
@@ -215,7 +252,7 @@ func (t *TargetType) gatherFields(node ast.Node) bool {
 }
 
 // Equals function template. Expects to be fed lower case first letter of type,
-// and type Name x2. TODO: avoid passing type Name 2x
+// and type name x2. TODO: avoid passing type name 2x
 const equalsTmpl = `func (%s *%s) Equals(instance %s) bool {
 %s
 	return true

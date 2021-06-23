@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-func TestGenerateEquals(t *testing.T) {
-
+func TestGenerate(t *testing.T) {
     os.Setenv("GOFILE", "structs.go")
 	os.Args = []string{
 		"generate",
@@ -21,5 +20,4 @@ func TestGenerateEquals(t *testing.T) {
 	}
 
 	main()
-
 }
