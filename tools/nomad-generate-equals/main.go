@@ -23,38 +23,43 @@ func (s *stringSliceFlag) Set(value string) error {
 	return nil
 }
 
-var excludedFields stringSliceFlag
-var typeNames stringSliceFlag
+var excludedFieldFlags stringSliceFlag
+var typeNameFlags stringSliceFlag
+var methodFlags stringSliceFlag
 
 func main() {
-	flag.Var(&excludedFields, "exclude", "list of fields to exclude from Copy")
-	flag.Var(&typeNames, "type", "types for which to generate Copy methods")
+	run(os.Args)
+}
+
+func run(args []string) {
+	flag.Var(&excludedFieldFlags, "exclude", "list of fields to exclude from Copy")
+	flag.Var(&typeNameFlags, "type", "types for which to generate Copy methodFlags")
+	flag.Var(&methodFlags, "method", "methodFlags to generate - defaults to all")
 	flag.Parse()
 
-	if len(typeNames) == 0 {
+	if len(typeNameFlags) == 0 {
 		fmt.Println("at least one -type flag needed to generate Copy")
 		os.Exit(2)
 	}
 
-	generateEquals()
-}
-
-func generateEquals() {
-	cwd, err := os.Getwd()
-	if err != nil {
-		fmt.Printf("could not get package working directory: %v\n", err)
-		os.Exit(2)
-	}
+	// TODO: replace all this filepathery
 	fileName := os.Getenv("GOFILE")
 	if fileName == "" {
 		fmt.Println("GOFILE is unset")
 		os.Exit(2)
 	}
 
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("could not get package working directory: %v\n", err)
+		os.Exit(2)
+	}
 	cwd = strings.TrimSuffix(cwd, "/tools/nomad-generate-equals") + "/nomad/structs"
 
-	g := &Generator{excludedFields: excludedFields}
-	g.parseFile(filepath.Join(cwd, fileName))
+	filePath := filepath.Join(cwd, fileName)
+
+	g := &Generator{}
+	g.parseFile(filePath)
 
 	fmt.Printf("cwd: %s\n", cwd)
 	for _, kv := range os.Environ() {
@@ -63,9 +68,7 @@ func generateEquals() {
 		}
 	}
 
-	for _, typeName := range typeNames {
-		g.generate(typeName)
-	}
+	g.generate()
 }
 
 // Generator holds the state of the analysis. Primarily used to buffer
@@ -73,10 +76,8 @@ func generateEquals() {
 type Generator struct {
 	buf            bytes.Buffer // Accumulated output.
 	file           *ast.File
-	excludedFields []string
-	values         []string // Accumulator for constant values of that type.
+	targets 	  []TargetType
 	//	pkg            *Package // Package we are scanning.
-
 }
 
 func (g *Generator) Printf(format string, args ...interface{}) {
@@ -93,33 +94,83 @@ func (g *Generator) parseFile(filepath string) error {
 	return nil
 }
 
-func (g *Generator) generate(typeName string) {
-	fmt.Printf("generating Equals for %s\n", typeName)
-	if g.file != nil {
-		t := &TargetType{typeName: typeName, excluded: g.excludedFields}
-		ast.Inspect(g.file, t.genDecl)
-		// I don't think we want to do this.
-		g.values = append(g.values, t.fields...)
+func (g *Generator) generate() {
+	for _, typeName := range typeNameFlags {
+		t := &TargetType{Name: typeName}
+		if g.file != nil {
+			ast.Inspect(g.file, t.gatherFields)
 
-		if len(t.fields) > 0 {
-			txt := fmt.Sprintf(
-				equalsTmpl,
-				strings.ToLower(string(t.typeName[0])),
-				t.typeName,
-				t.typeName,
-				t.GenEqualsForValues())
-			fmt.Println(txt)
-			fmt.Println(txt)
+			for _, methodName := range t.Methods() {
+				if methodName == "equals" {
+					g.generateEquals(t)
+				}
+			}
 		}
-
 	}
 }
 
+func (g *Generator) generateEquals(t *TargetType) {
+	fmt.Printf("generating Equals for %s\n", t.Name)
+
+	if len(t.fields) > 0 {
+		txt := fmt.Sprintf(
+			equalsTmpl,
+			t.Abbr(),
+			t.Name,
+			t.Name,
+			t.GenEqualsForValues())
+		fmt.Println(txt)
+		fmt.Println(txt)
+	}
+}
 
 type TargetType struct {
-	typeName string   // name of the type we're generating Copy for
-	excluded []string // fields we should ignore
-	fields   []string // accumulated objects (TODO: what are we trying to do here?)
+	Name string // Name of the type we're generating methods for
+	methods []string
+	excludedFields []string
+	fields []string
+}
+
+func (t *TargetType) Abbr() string {
+	return strings.ToLower(string(t.Name[0]))
+}
+
+func (t *TargetType) Methods() [] string {
+	if t.methods == nil {
+		var m []string
+		for _, method := range methodFlags {
+			if strings.Index(method, t.Name) == -1 {
+				m = append(m, strings.TrimPrefix(fmt.Sprintf("%s.", t.Name), method))
+			}
+		}
+
+		if len(m) > 0 {
+			t.methods = m
+		} else {
+			t.methods = make([]string, 0)
+		}
+
+	}
+	return t.methods
+}
+
+func (t *TargetType) ExcludedFields() [] string {
+	if t.excludedFields == nil {
+		var e []string
+		for _, excludedField := range excludedFieldFlags {
+			if strings.Index(excludedField, t.Name) == -1 {
+				e = append(e, strings.TrimPrefix(fmt.Sprintf("%s.", t.Name), excludedField))
+			}
+		}
+
+		if len(e) > 0 {
+			t.excludedFields = e
+		} else {
+			t.excludedFields = make([]string, 0)
+		}
+
+	}
+	return t.excludedFields
 }
 
 func (t *TargetType) GenEqualsForValues() string {
@@ -128,7 +179,7 @@ func (t *TargetType) GenEqualsForValues() string {
 	for _, field := range t.fields {
 		builder.WriteString(fmt.Sprintf(
 			"\tif %s.%s != instance.%s return false\n",
-			strings.ToLower(string(t.typeName[0])),
+			t.Abbr(),
 			field,
 			field))
 	}
@@ -137,22 +188,22 @@ func (t *TargetType) GenEqualsForValues() string {
 }
 
 
-func (ct *TargetType) genDecl(node ast.Node) bool {
+func (t *TargetType) gatherFields(node ast.Node) bool {
 	var s string
 	switch node.(type) {
 	case *ast.TypeSpec:
-		t := node.(*ast.TypeSpec)
-		if t.Name.Name == ct.typeName {
-			s = t.Name.Name
-			fmt.Printf("%#v\n", t.Type)
-			expr := t.Type.(*ast.StructType)
+		typeSpec := node.(*ast.TypeSpec)
+		if typeSpec.Name.Name == t.Name {
+			s = typeSpec.Name.Name
+			fmt.Printf("%#v\n", typeSpec.Type)
+			expr := typeSpec.Type.(*ast.StructType)
 			for _, field := range expr.Fields.List {
-				for _, exclude := range ct.excluded {
+				for _, exclude := range t.ExcludedFields() {
 					if exclude == field.Names[0].Name {
 						break
 					}
 				}
-				ct.fields = append(ct.fields, field.Names[0].Name)
+				t.fields = append(t.fields, field.Names[0].Name)
 				fmt.Printf("field: %#v\n", field.Names[0].Name)
 			}
 		}
@@ -164,7 +215,7 @@ func (ct *TargetType) genDecl(node ast.Node) bool {
 }
 
 // Equals function template. Expects to be fed lower case first letter of type,
-// and type name x2. TODO: avoid passing type name 2x
+// and type Name x2. TODO: avoid passing type Name 2x
 const equalsTmpl = `func (%s *%s) Equals(instance %s) bool {
 %s
 	return true

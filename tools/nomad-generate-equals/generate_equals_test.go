@@ -7,10 +7,19 @@ import (
 
 func TestGenerateEquals(t *testing.T) {
 
-	typeNames = append(typeNames, "Job")
-	excludedFields = append(excludedFields, "Stop")
-	excludedFields = append(excludedFields, "CreateIndex")
     os.Setenv("GOFILE", "structs.go")
-	generateEquals()
+	os.Args = []string{
+		"generate",
+		"-type=Job",
+		"-exclude=Job.Stop",
+		"-exclude=Job.CreateIndex",
+		"-method=Job.all",
+		"-method=Job.Equals",
+		"-method=Job.Copy",
+		"-method=Job.Diff",
+		"-method=Job.Merge",
+	}
+
+	main()
 
 }

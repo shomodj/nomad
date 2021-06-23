@@ -206,7 +206,7 @@ generate-copy: build-generate-copy
 # TODO: remove as this will be covered by generate-structs
 .PHONY: generate-equals
 generate-equals: build-generate-equals
-	go generate -run "nomad-generate-equals" ./nomad/structs
+	go generate -run "nomad-generate" ./nomad/structs
 
 .PHONY: proto
 proto:
