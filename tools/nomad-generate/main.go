@@ -1,13 +1,15 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -132,23 +134,18 @@ func (g *Generator) generate() {
 
 func (g *Generator) render(targetFunc string) error {
 	var err error
-	var file *os.File
+	targetFileName := fmt.Sprintf("../../nomad/structs/structs.%s.go", targetFunc)
 
-	if file, err = os.OpenFile(fmt.Sprintf("../../nomad/structs/structs.%s.go", targetFunc), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666); err != nil {
+	var buf bytes.Buffer
+	err = g.write(&buf, fmt.Sprintf("./structs.%s.tmpl", targetFunc), g)
+	if err != nil {
 		return err
 	}
 
-	w := bufio.NewWriter(file)
+	formatted := g.format(buf.Bytes())
 
-	if err = g.write(w, fmt.Sprintf("./structs.%s.tmpl", targetFunc), g); err != nil {
-		return err
-	}
-
-	if err = w.Flush(); err != nil {
-		return err
-	}
-
-	if err = file.Close(); err != nil {
+	err = ioutil.WriteFile(targetFileName, formatted, 0744)
+	if err != nil {
 		return err
 	}
 
@@ -163,15 +160,14 @@ func (g *Generator) write(w io.Writer, fileName string, data interface{}) error 
 	return tmpl.Execute(w, data)
 }
 
-// TODO: wire this up
-// func (g *Generator) format() []byte {
-// 	src, err := format.Source(g.buf.Bytes())
-// 	if err != nil {
-// 		fmt.Printf("invalid Go generated: %s\n", err) // should never happen
-// 		return g.buf.Bytes()
-// 	}
-// 	return src
-// }
+func (g *Generator) format(buf []byte) []byte {
+	src, err := format.Source(buf)
+	if err != nil {
+		fmt.Printf("invalid Go generated: %s\n", err) // should never happen
+		return buf
+	}
+	return src
+}
 
 type TargetField struct {
 	Name     string
