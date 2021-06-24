@@ -131,26 +131,14 @@ func (g *Generator) needsCopyMethod(t *ast.TypeSpec) bool {
 	}
 	for _, field := range expr.Fields.List {
 		switch field.Type.(type) {
-		case *ast.StarExpr:
+		case *ast.StarExpr, *ast.MapType, *ast.ArrayType:
 			ts.setIsCopier()
 			return true
-		case *ast.StructType:
-			return false // TODO: how do we get the type name here?
-		case *ast.MapType, *ast.ArrayType:
-			ts.setIsCopier()
-			return true
+		default:
+			// primitives are never Copier, and struct values will be marked
+			// as Copier when we hit needsCopyMethod on that struct value's
+			// type spec
 		}
 	}
 	return false
-}
-
-type CopyType struct {
-	g        *Generator
-	name     string              // name of the type we're generating Copy for
-	recv     string              // identifier of the receiver we're generating Copy for
-	excluded map[string]struct{} // fields we should ignore
-
-	// accumulated objects, each of which has its own copying behavior.
-	// primitive fields are excluded because we do that at the top level
-	blocks []string
 }
