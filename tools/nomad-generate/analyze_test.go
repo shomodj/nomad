@@ -10,7 +10,7 @@ func TestAnalyze_Copy(t *testing.T) {
 	require := require.New(t)
 
 	g := &Generator{
-		packageName:    "github.com/hashicorp/nomad/tools/nomad-generate/main",
+		packageDir:     "github.com/hashicorp/nomad/tools/nomad-generate/main",
 		typeNames:      []string{"Basket"},
 		methods:        []string{"Basket.Copy"},
 		excludedFields: []string{"Basket.Exclude"},

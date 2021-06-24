@@ -34,26 +34,11 @@ func (j *Job) Copy() *Job {
 		xx.TaskGroups = append(xx.TaskGroups, v)
 	}
 
-	if j.Multiregion == nil {
-		xx.Multiregion = nil
-	} else {
-		xx.Multiregion = new(pointer)
-		*xx.Multiregion = *j.Multiregion
-	}
+	xx.Multiregion = j.Multiregion.Copy()
 
-	if j.Periodic == nil {
-		xx.Periodic = nil
-	} else {
-		xx.Periodic = new(pointer)
-		*xx.Periodic = *j.Periodic
-	}
+	xx.Periodic = j.Periodic.Copy()
 
-	if j.ParameterizedJob == nil {
-		xx.ParameterizedJob = nil
-	} else {
-		xx.ParameterizedJob = new(pointer)
-		*xx.ParameterizedJob = *j.ParameterizedJob
-	}
+	xx.ParameterizedJob = j.ParameterizedJob.Copy()
 
 	xx.Payload = make([]byte, len(j.Payload))
 	for _, v := range j.Payload {

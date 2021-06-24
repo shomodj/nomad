@@ -9,9 +9,10 @@ import (
 )
 
 func TestGenerate(t *testing.T) {
+
 	g := &Generator{
 		typeNames:      []string{"Job"},
-		packageName:    "github.com/hashicorp/nomad/nomad/structs",
+		packageDir:     "../../nomad/structs",
 		methods:        []string{"Job.All"},
 		excludedFields: []string{"Job.Stop", "Job.CreateIndex"},
 		typeSpecs:      map[string]*TypeSpecNode{},
@@ -23,7 +24,7 @@ func TestGenerate(t *testing.T) {
 func TestFieldResolveType(t *testing.T) {
 	g := &Generator{
 		typeNames:      []string{"Job"},
-		packageName:    "github.com/hashicorp/nomad/nomad/structs",
+		packageDir:     "github.com/hashicorp/nomad/nomad/structs",
 		methods:        []string{"Job.All"},
 		excludedFields: []string{"Job.Stop", "Job.CreateIndex"},
 		typeSpecs:      map[string]*TypeSpecNode{},

@@ -30,16 +30,20 @@ func (s *stringSliceFlag) Set(value string) error {
 }
 
 func main() {
+	for _, element := range os.Environ() {
+		variable := strings.Split(element, "=")
+		fmt.Println(variable[0],"=>",variable[1])
+	}
 
 	var excludedFieldFlags stringSliceFlag
 	var typeNameFlags stringSliceFlag
 	var methodFlags stringSliceFlag
-	var packageName string
+	var packageDir string
 
 	flag.Var(&excludedFieldFlags, "exclude", "list of Fields to exclude from Copy")
 	flag.Var(&typeNameFlags, "type", "types for which to generate Copy methodFlags")
 	flag.Var(&methodFlags, "method", "methodFlags to generate - defaults to all")
-	flag.StringVar(&packageName, "packageName", "./", "The source dir to target")
+	flag.StringVar(&packageDir, "packageDir", "./", "The source dir to target")
 	flag.Parse()
 
 	if len(typeNameFlags) == 0 {
@@ -48,7 +52,7 @@ func main() {
 	}
 
 	g := &Generator{
-		packageName:    packageName,
+		packageDir:     packageDir,
 		typeNames:      typeNameFlags,
 		methods:        methodFlags,
 		excludedFields: excludedFieldFlags,
@@ -102,8 +106,12 @@ func (g *Generator) loadPackages() ([]*packages.Package, error) {
 		packages.NeedTypesSizes |
 		packages.NeedModule
 
-	cfg := &packages.Config{Mode: loadMode}
-	pkgs, err := packages.Load(cfg, g.packageName)
+	cfg := &packages.Config{
+		Dir: g.packageDir,
+		Mode: loadMode,
+	}
+
+	pkgs, err := packages.Load(cfg, ".")
 	return pkgs, err
 }
 
@@ -165,10 +173,10 @@ func (g *Generator) isTarget(name string) bool {
 // Generator holds the state of the analysis. Primarily used to buffer
 // the output for format.Source.
 type Generator struct {
-	packageName string
-	files       []*ast.File
-	Targets     []*TargetType
-	typeSpecs   map[string]*TypeSpecNode
+	packageDir string
+	files      []*ast.File
+	Targets    []*TargetType
+	typeSpecs  map[string]*TypeSpecNode
 
 	typeNames      []string
 	methods        []string
