@@ -109,6 +109,7 @@ deps:  ## Install build and development dependencies
 	go install github.com/golang/protobuf/protoc-gen-go@v1.3.4
 	go install github.com/hashicorp/go-msgpack/codec/codecgen@v1.1.5
 	go install github.com/bufbuild/buf/cmd/buf@v0.36.0
+	cd ./tools/nomad-generate && go install .
 
 .PHONY: lint-deps
 lint-deps: ## Install linter dependencies
@@ -188,14 +189,10 @@ generate-structs: ## Update generated code
 	@echo "--> Running go generate..."
 	@go generate $(LOCAL_PACKAGES)
 
-# TODO: move into 'bootstrap' target
-.PHONY: build-generate
-build-generate:
-	cd ./tools/nomad-generate && go install .
-
 # TODO: remove as this will be covered by generate-structs
-.PHONY: build-generate
+.PHONY: generate-struct-methods
 generate-struct-methods:
+	cd ./tools/nomad-generate && go install .
 	go generate -run "nomad-generate" ./nomad/structs
 
 .PHONY: proto
