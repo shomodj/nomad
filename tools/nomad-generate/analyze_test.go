@@ -13,7 +13,7 @@ func TestAnalyze_Copy(t *testing.T) {
 		packageDir:     "github.com/hashicorp/nomad/tools/nomad-generate/main",
 		typeNames:      []string{"Job"},
 		methods:        []string{"Job.Copy"},
-		excludedFields: []string{"Job.CreateIndex"},
+		excludedFields: []string{"Payload"},
 		typeSpecs:      map[string]*TypeSpecNode{},
 	}
 

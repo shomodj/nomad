@@ -14,7 +14,7 @@ func TestGenerate(t *testing.T) {
 		typeNames:      []string{"Job"},
 		packageDir:     "../../nomad/structs",
 		methods:        []string{"Job.All"},
-		excludedFields: []string{"Job.Stop", "Job.CreateIndex"},
+		excludedFields: []string{"Job.Payload"},
 		typeSpecs:      map[string]*TypeSpecNode{},
 	}
 	err := run(g)
@@ -26,7 +26,7 @@ func TestFieldResolveType(t *testing.T) {
 		typeNames:      []string{"Job"},
 		packageDir:     "github.com/hashicorp/nomad/nomad/structs",
 		methods:        []string{"Job.All"},
-		excludedFields: []string{"Job.Stop", "Job.CreateIndex"},
+		excludedFields: []string{"Job.Payload"},
 		typeSpecs:      map[string]*TypeSpecNode{},
 	}
 
