@@ -1,5 +1,9 @@
 package structs
 
+import (
+       "github.com/hashicorp/nomad/helper"
+)
+
 {{ range $targetType := .Targets -}}
 {{ $old := $targetType.Abbr }}
 func ({{$old}} *{{$targetType.Name}}) Copy() *{{$targetType.Name}} {
@@ -50,7 +54,7 @@ func ({{$old}} *{{$targetType.Name}}) Copy() *{{$targetType.Name}} {
 
     {{- if $field.IsArray }}
       {{ if and $field.ValueType $field.ValueType.IsCopier }}
-        {{ $nf }} = make([]{{$field.ValueType.TypeName}}, len({{$old}}))
+        {{ $nf }} = make([]{{$field.ValueType.TypeName}}, len({{ $of }}))
         for _, v := range {{ $of }} {
             {{ $nf }} = append({{ $nf }}, v.Copy())
         }

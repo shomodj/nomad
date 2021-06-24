@@ -1,5 +1,9 @@
 package structs
 
+import (
+	"github.com/hashicorp/nomad/helper"
+)
+
 func (j *Job) Copy() *Job {
 
 	if j == nil {
@@ -10,22 +14,22 @@ func (j *Job) Copy() *Job {
 
 	xx.Datacenters = helper.CopySliceString(j.Datacenters)
 
-	xx.Constraints = make([]*Constraint, len(j))
+	xx.Constraints = make([]*Constraint, len(j.Constraints))
 	for _, v := range j.Constraints {
 		xx.Constraints = append(xx.Constraints, v.Copy())
 	}
 
-	xx.Affinities = make([]*Affinity, len(j))
+	xx.Affinities = make([]*Affinity, len(j.Affinities))
 	for _, v := range j.Affinities {
 		xx.Affinities = append(xx.Affinities, v.Copy())
 	}
 
-	xx.Spreads = make([]*Spread, len(j))
+	xx.Spreads = make([]*Spread, len(j.Spreads))
 	for _, v := range j.Spreads {
 		xx.Spreads = append(xx.Spreads, v.Copy())
 	}
 
-	xx.TaskGroups = make([]*TaskGroup, len(j))
+	xx.TaskGroups = make([]*TaskGroup, len(j.TaskGroups))
 	for _, v := range j.TaskGroups {
 		xx.TaskGroups = append(xx.TaskGroups, v.Copy())
 	}
