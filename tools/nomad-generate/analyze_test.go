@@ -11,9 +11,9 @@ func TestAnalyze_Copy(t *testing.T) {
 
 	g := &Generator{
 		packageDir:     "github.com/hashicorp/nomad/tools/nomad-generate/main",
-		typeNames:      []string{"Basket"},
-		methods:        []string{"Basket.Copy"},
-		excludedFields: []string{"Basket.Exclude"},
+		typeNames:      []string{"Job"},
+		methods:        []string{"Job.Copy"},
+		excludedFields: []string{"Job.CreateIndex"},
 		typeSpecs:      map[string]*TypeSpecNode{},
 	}
 
@@ -25,14 +25,17 @@ func TestAnalyze_Copy(t *testing.T) {
 
 	g.analyze()
 
-	require.True(g.typeSpecs["Basket"].isCopier())
-	// require.Len(g.typeSpecs["Basket"].fields, 14) // ?
+	require.True(g.typeSpecs["Job"].isCopier())
+	require.Len(g.typeSpecs["Job"].fields, 3) // 3 pointer fields
 
-	require.True(g.typeSpecs["AppleWithReferenceFields"].isCopier())
-	require.False(g.typeSpecs["BananaWithOnlyValueFields"].isCopier())
-	require.True(g.typeSpecs["CarrotWithCopyMethod"].isCopier())
-	require.False(g.typeSpecs["OrangeWithEqualsMethod"].isCopier())
-	require.False(g.typeSpecs["Fig"].isCopier())
-	require.False(g.typeSpecs["Grapefruit"].isCopier())
+	got := func(typespec string) bool {
+		return g.typeSpecs[typespec].isCopier()
+	}
 
+	require.True(got("Multiregion"), "Multiregion has pointer and array fields")
+	require.True(got("PeriodicConfig"), "PeriodicConfig has a pointer field")
+	require.True(got("ParameterizedJobConfig"), "ParameterizedJobConfig has array fields")
+	require.True(got("UpdateStrategy"), "UpdateStrategy has a Copy method")
+
+	require.False(got("TaskGroupSummary"), "TaskGroupSummary has only primitive fields")
 }
