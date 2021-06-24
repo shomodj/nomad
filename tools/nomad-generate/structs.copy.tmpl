@@ -1,0 +1,70 @@
+package structs
+
+{{ range $targetType := .Targets -}}
+{{ $old := $targetType.Abbr }}
+{{ $new := "xx" }}
+func ({{$old}} *{{$targetType.Name}}) Copy() *{{$targetType.Name}} {
+
+	if {{ $old }} == nil {
+		return nil
+	}
+	{{$new}} := new({{$targetType.Name}})
+	*{{$new}} = *{{$old}}
+
+{{- range $field := .Fields }}
+
+    {{- if or $field.IsPointer $field.IsStruct }}
+      {{ if $field.IsCopier }}
+        {{$new}}.{{$field.Name}} = {{$old}}.{{$field.Name}}.Copy()
+      {{ else }}
+        if {{$old}}.{{$field.Name}} == nil {
+            {{$new}}.{{$field.Name}} = nil
+        } else {
+            {{$new}}.{{$field.Name}} = new({{$field.TypeName}})
+            *{{$new}}.{{$field.Name}} = *{{$old}}.{{$field.Name}}
+        }
+      {{- end}}
+    {{- end}}
+
+    {{- if $field.IsMap }}
+      {{ if $field.ValueType.IsCopier }}
+      {{$new}}.{{$field.Name}} = map[{{$field.KeyType}}]{{$field.ValueType}}{}
+        for k, v := range {{$old}}.{{$field.Name}} {
+            {{$new}}.{{$field.Name}}[k] = v.Copy()
+        }
+      {{ else if and (eq $field.KeyType.TypeName "string") (eq $field.ValueType.TypeName "string") }}
+        {{$new}}.{{$field.Name}} = helper.CopyMapStringString({{$old}}.{{$field.Name}})
+      {{ else if and (eq $field.KeyType "string") (eq $field.ValueType "int") }}
+        {{$new}}.{{$field.Name}} = helper.CopyMapStringInt({{$old}}.{{$field.Name}})
+      {{ else if $field.KeyType eq "string" and $field.ValueType eq "float64" }}
+        {{$new}}.{{$field.Name}} = helper.CopyMapStringFloat64({{$old}}.{{$field.Name}})
+      {{ else }}
+        {{$new}}.{{$field.Name}} = map[{{$field.KeyType}}]{{$field.ValueType}}{}
+        for k, v := range {{$old}}.{{$field.Name}} {
+            {{$new}}.{{$field.Name}}[k] = v
+        }
+      {{ end }}
+    {{- end}}
+
+    {{- if $field.IsArray }}
+      {{ if and $field.ValueType $field.ValueType.IsCopier }}
+        {{$new}}.{{$field.Name}} = make([]{{$field.ValueType.TypeName}}, len({{$old}}))
+        for _, v := range {{$old}}{{$field.Name}} {
+            {{$new}}.{{$field.Name}} = append({{$new}}.{{$field.Name}}, v.Copy())
+        }
+      {{ else if eq $field.ValueType.TypeName "string" }}
+        {{$new}}.{{$field.Name}} = helper.CopySliceString({{$old}}.{{$field.Name}})
+      {{ else if eq $field.ValueType.TypeName "int" }}
+        {{$new}}.{{$field.Name}} = helper.CopySliceInt({{$old}}.{{$field.Name}})
+      {{ else }}
+        {{$new}}.{{$field.Name}} = make([]{{$field.ValueType.TypeName}}, len({{$old}}.{{$field.Name}}))
+        for _, v := range {{$old}}.{{$field.Name}} {
+            {{$new}}.{{$field.Name}} = append({{$new}}.{{$field.Name}}, v)
+        }
+      {{- end}}
+    {{- end}}
+
+{{- end }}
+	return {{$new}}
+}
+{{- end}}

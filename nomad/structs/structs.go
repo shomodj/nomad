@@ -3937,9 +3937,7 @@ const (
 	JobTrackedScalingEvents = 20
 )
 
-//go:generate nomad-generate-copy -type Node -type Job -exclude Job.Stop -exclude Node.CreateIndex
-
-//go: generate nomad-generate -methods copy,equals,all -type Job -exclude Stop -exclude CreateIndex
+//go:generate nomad-generate -methods copy,equals,all -type Job -exclude Stop -exclude CreateIndex
 
 // Job is the scope of a scheduling request to Nomad. It is the largest
 // scoped object, and is a named collection of task groups. Each task group

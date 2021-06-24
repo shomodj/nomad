@@ -21,8 +21,9 @@ func setupEnv() {
 		"-method=Job.Merge",
 	}
 }
+
 func TestGenerate(t *testing.T) {
-    setupEnv()
+	setupEnv()
 	main()
 }
 

@@ -63,7 +63,9 @@ func run(args []string) {
 
 	filePath = filepath.Join(cwd, fileName)
 
-	g = &Generator{}
+	g = &Generator{
+		typeSpecs: map[string]*TypeSpecNode{},
+	}
 	err = g.parseFile(filePath)
 	if err != nil {
 		fmt.Printf("could not parse file: %v\n", err)
@@ -77,14 +79,16 @@ func run(args []string) {
 		}
 	}
 
+	g.analyze()
 	g.generate()
 }
 
 // Generator holds the state of the analysis. Primarily used to buffer
 // the output for format.Source.
 type Generator struct {
-	file    *ast.File
-	Targets []*TargetType
+	file      *ast.File
+	Targets   []*TargetType
+	typeSpecs map[string]*TypeSpecNode
 }
 
 func (g *Generator) parseFile(filepath string) error {
@@ -109,9 +113,9 @@ func (g *Generator) generate() {
 	}
 
 	var err error
-	//if err = g.render("copy"); err != nil {
-	//	fmt.Printf("could not render copy: %v\n", err)
-	//}
+	if err = g.render("copy"); err != nil {
+		fmt.Printf("could not render copy: %v\n", err)
+	}
 
 	if err = g.render("equals"); err != nil {
 		fmt.Printf("could not render equals: %v\n", err)
@@ -126,7 +130,7 @@ func (g *Generator) generate() {
 	//}
 }
 
-func (g * Generator) render(targetFunc string) error {
+func (g *Generator) render(targetFunc string) error {
 	var err error
 	var file *os.File
 
@@ -151,7 +155,7 @@ func (g * Generator) render(targetFunc string) error {
 	return nil
 }
 
-func (g * Generator) write(w io.Writer, fileName string, data interface{}) error {
+func (g *Generator) write(w io.Writer, fileName string, data interface{}) error {
 	tmpl, err := template.ParseFiles(fileName)
 	if err != nil {
 		return err
@@ -159,14 +163,29 @@ func (g * Generator) write(w io.Writer, fileName string, data interface{}) error
 	return tmpl.Execute(w, data)
 }
 
+// TODO: wire this up
+// func (g *Generator) format() []byte {
+// 	src, err := format.Source(g.buf.Bytes())
+// 	if err != nil {
+// 		fmt.Printf("invalid Go generated: %s\n", err) // should never happen
+// 		return g.buf.Bytes()
+// 	}
+// 	return src
+// }
+
 type TargetField struct {
 	Name     string
 	Field    *ast.Field
 	TypeName string
+
+	KeyType   *TargetField // the type of a map key
+	ValueType *TargetField // the type of a map or array value
+
+	isCopier bool // does this type implement Copy
 }
 
 func (f *TargetField) IsPrimitive() bool {
-	return !(f.IsPointer() || f.IsStruct() || f.IsArray())
+	return !(f.IsPointer() || f.IsStruct() || f.IsArray() || f.IsMap())
 }
 
 func (f *TargetField) IsArray() bool {
@@ -181,25 +200,84 @@ func (f *TargetField) IsPointer() bool {
 	return f.TypeName == "pointer"
 }
 
+func (f *TargetField) IsMap() bool {
+	return f.TypeName == "map"
+}
+
+func (f *TargetField) IsCopier() bool {
+	return f.isCopier
+}
+
 func (f *TargetField) resolveType(node ast.Node) bool {
-	if len (f.TypeName) < 1 {
+	if len(f.TypeName) < 1 {
 		switch node.(type) {
 		case *ast.Field:
 			if node.(*ast.Field).Names[0].Name == f.Name {
-				switch node.(*ast.Field).Type.(type) {
+				switch t := node.(*ast.Field).Type.(type) {
 				case *ast.Ident:
 					f.TypeName = node.(*ast.Field).Type.(*ast.Ident).Name
-					// For direct struct references (not pointers) the type Name will be returned
-					// so we correct it here.
+					// For direct struct references (not pointers) the type
+					// Name will be returned so we correct it here.
 					if !f.IsPrimitive() {
 						f.TypeName = "struct"
 					}
-				case *ast.ArrayType, *ast.MapType:
+				case *ast.ArrayType:
 					f.TypeName = "array"
+
+					var elemTypeName string
+					var ident string
+
+					expr, ok := t.Elt.(*ast.StarExpr)
+					if ok {
+						ident = expr.X.(*ast.Ident).Name
+						elemTypeName = "*" + ident
+					} else {
+						ident = t.Elt.(*ast.Ident).Name
+						elemTypeName = ident
+					}
+
+					ts := g.typeSpecs[ident]
+
+					f.ValueType = &TargetField{
+						TypeName: elemTypeName,
+						isCopier: ts != nil && ts.isCopier(),
+					}
+
+				case *ast.MapType:
+					f.TypeName = "map"
+
+					var valueTypeName string
+					var ident string
+
+					expr, ok := t.Value.(*ast.StarExpr)
+					if ok {
+						ident = expr.X.(*ast.Ident).Name
+						valueTypeName = "*" + ident
+					} else {
+						ident = t.Value.(*ast.Ident).Name
+						valueTypeName = ident
+					}
+
+					ts := g.typeSpecs[ident]
+					f.ValueType = &TargetField{
+						TypeName: valueTypeName,
+						isCopier: ts != nil && ts.isCopier(),
+					}
+					f.KeyType = &TargetField{
+						TypeName: t.Key.(*ast.Ident).Name,
+					}
+
 				case *ast.StructType:
 					f.TypeName = "struct"
+					// TODO: where can we get the Ident from?
+					//ts := g.typeSpecs[ident]
+					//f.isCopier = ts != nil && ts.isCopier()
+
 				case *ast.StarExpr:
 					f.TypeName = "pointer"
+					ident := t.X.(*ast.Ident).Name
+					ts := g.typeSpecs[ident]
+					f.isCopier = ts != nil && ts.isCopier()
 				}
 			}
 		default:
@@ -220,7 +298,7 @@ func (t *TargetType) Abbr() string {
 	return strings.ToLower(string(t.Name[0]))
 }
 
-func (t *TargetType) Methods() [] string {
+func (t *TargetType) Methods() []string {
 	if t.methods == nil {
 		var m []string
 		for _, method := range methodFlags {
@@ -240,7 +318,7 @@ func (t *TargetType) Methods() [] string {
 	return t.methods
 }
 
-func (t *TargetType) ExcludedFields() [] string {
+func (t *TargetType) ExcludedFields() []string {
 	if t.excludedFields == nil {
 		var e []string
 		for _, excludedField := range excludedFieldFlags {
