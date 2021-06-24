@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,4 +40,33 @@ func TestAnalyze_Copy(t *testing.T) {
 	require.True(got("UpdateStrategy"), "UpdateStrategy has a Copy method")
 
 	require.False(got("TaskGroupSummary"), "TaskGroupSummary has only primitive fields")
+}
+
+func TestParse_FieldResolveType(t *testing.T) {
+	g := &Generator{
+		typeNames:      []string{"Job"},
+		packageName:    "github.com/hashicorp/nomad/nomad/structs",
+		methods:        []string{"Job.All"},
+		excludedFields: []string{"Job.Payload"},
+		typeSpecs:      map[string]*TypeSpecNode{},
+	}
+
+	var jobTarget *TargetType
+
+	for _, target := range g.Targets {
+		if target.Name == "Job" {
+			jobTarget = target
+			break
+		}
+	}
+
+	if jobTarget == nil {
+		log.Fatal("unable to locate job target")
+	}
+
+	for _, field := range jobTarget.Fields {
+		t.Log(fmt.Sprintf("%s: %s", field.Name, field.TypeName))
+	}
+
+	fmt.Println("TestFieldResolveType complete")
 }
