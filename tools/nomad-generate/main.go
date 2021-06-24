@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -11,13 +12,17 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"strings"
 	"text/template"
+
+	"golang.org/x/tools/go/packages"
 )
 
-var filePath string
 var g *Generator
+var excludedFieldFlags stringSliceFlag
+var typeNameFlags stringSliceFlag
+var methodFlags stringSliceFlag
+var packageName string
 
 type stringSliceFlag []string
 
@@ -30,18 +35,15 @@ func (s *stringSliceFlag) Set(value string) error {
 	return nil
 }
 
-var excludedFieldFlags stringSliceFlag
-var typeNameFlags stringSliceFlag
-var methodFlags stringSliceFlag
-
 func main() {
-	run(os.Args)
+	run()
 }
 
-func run(args []string) {
+func run() {
 	flag.Var(&excludedFieldFlags, "exclude", "list of Fields to exclude from Copy")
 	flag.Var(&typeNameFlags, "type", "types for which to generate Copy methodFlags")
 	flag.Var(&methodFlags, "method", "methodFlags to generate - defaults to all")
+	flag.StringVar(&packageName, "packageName", "./","The source dir to target")
 	flag.Parse()
 
 	if len(typeNameFlags) == 0 {
@@ -49,78 +51,120 @@ func run(args []string) {
 		os.Exit(2)
 	}
 
-	// TODO: replace all this filepathery
-	fileName := os.Getenv("GOFILE")
-	if fileName == "" {
-		fmt.Println("GOFILE is unset")
-		os.Exit(2)
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		fmt.Printf("could not get package working directory: %v\n", err)
-		os.Exit(2)
-	}
-	cwd = strings.TrimSuffix(cwd, "/tools/nomad-generate") + "/nomad/structs"
-
-	filePath = filepath.Join(cwd, fileName)
-
 	g = &Generator{
 		typeSpecs: map[string]*TypeSpecNode{},
 	}
-	err = g.parseFile(filePath)
-	if err != nil {
-		fmt.Printf("could not parse file: %v\n", err)
+
+	var err error
+	var pkgs []*packages.Package
+	if pkgs, err = loadPackages(); err != nil {
+		fmt.Println(fmt.Sprintf("error loading packages: %v", err))
 		os.Exit(2)
 	}
 
-	fmt.Printf("cwd: %s\n", cwd)
-	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "GO") {
-			fmt.Printf(" %s\n", kv)
+	if err = parsePackages(pkgs);  err != nil {
+		fmt.Println(fmt.Sprintf("error parsing packages: %v", err))
+		os.Exit(2)
+	}
+
+	if err = g.analyze(); err != nil {
+		fmt.Println(fmt.Sprintf("error analyzing: %v", err))
+		os.Exit(2)
+	}
+
+	if err = g.generate(); err != nil {
+		fmt.Println(fmt.Sprintf("error generating: %v", err))
+		os.Exit(2)
+	}
+}
+
+func loadPackages() ([]*packages.Package, error) {
+	const loadMode = packages.NeedName |
+		packages.NeedFiles |
+		packages.NeedCompiledGoFiles |
+		packages.NeedImports |
+		packages.NeedDeps |
+		packages.NeedExportsFile |
+		packages.NeedTypes |
+		packages.NeedSyntax |
+		packages.NeedTypesInfo |
+		packages.NeedTypesSizes |
+		packages.NeedModule
+
+	cfg := &packages.Config{Mode: loadMode}
+	pkgs, err := packages.Load(cfg, packageName)
+	return pkgs, err
+}
+
+func parsePackages(pkgs []*packages.Package) error {
+	for _, pkg := range pkgs {
+
+		if len(pkg.Errors) > 0 {
+			return pkg.Errors[0]
+		}
+
+		for _, goFile := range pkg.GoFiles {
+			// Create the AST by parsing src.
+			fileSet := token.NewFileSet() // positions are relative to fset
+			file, err := parser.ParseFile(fileSet, goFile, nil, 0)
+			if err != nil {
+				fmt.Printf("could not parse file: %v\n", err)
+				os.Exit(2)
+			}
+
+			g.files = append(g.files, file)
+
+			for _, node := range file.Decls {
+				switch node.(type) {
+
+				case *ast.GenDecl:
+					genDecl := node.(*ast.GenDecl)
+					for _, spec := range genDecl.Specs {
+						switch spec.(type) {
+						case *ast.TypeSpec:
+							typeSpec := spec.(*ast.TypeSpec)
+
+							switch typeSpec.Type.(type) {
+							case *ast.StructType:
+								if isTarget(typeSpec.Name.Name) {
+									t := &TargetType{Name: typeSpec.Name.Name}
+									g.Targets = append(g.Targets, t)
+									ast.Inspect(file, t.visitFields)
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
-	g.analyze()
-	g.generate()
+	return nil
+}
+
+func isTarget(name string) bool {
+	for _, typeName := range typeNameFlags {
+		if name == typeName { return true}
+	}
+	return false
 }
 
 // Generator holds the state of the analysis. Primarily used to buffer
 // the output for format.Source.
 type Generator struct {
-	file      *ast.File
+	files      []*ast.File
 	Targets   []*TargetType
 	typeSpecs map[string]*TypeSpecNode
 }
 
-func (g *Generator) parseFile(filepath string) error {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filepath, nil, parser.ParseComments)
-	if err != nil {
-		return err
-	}
-	g.file = f
-	return nil
-}
-
-func (g *Generator) generate() {
-	// Build Targets
-	for _, typeName := range typeNameFlags {
-		t := &TargetType{Name: typeName}
-		g.Targets = append(g.Targets, t)
-
-		if g.file != nil {
-			ast.Inspect(g.file, t.visitFields)
-		}
-	}
-
+func (g *Generator) generate() error {
 	var err error
 	if err = g.render("copy"); err != nil {
 		fmt.Printf("could not render copy: %v\n", err)
 	}
 
 	if err = g.render("equals"); err != nil {
-		fmt.Printf("could not render equals: %v\n", err)
+		return errors.New(fmt.Sprintf("generate.equals: %v", err))
 	}
 
 	//if err = g.render("diff"); err != nil {
@@ -130,6 +174,8 @@ func (g *Generator) generate() {
 	//if err = g.render("merge"); err != nil {
 	//	fmt.Printf("could not render merge: %v\n", err)
 	//}
+
+	return nil
 }
 
 func (g *Generator) render(targetFunc string) error {
@@ -144,6 +190,7 @@ func (g *Generator) render(targetFunc string) error {
 
 	formatted := g.format(buf.Bytes())
 
+	// TODO: replace ioutil
 	err = ioutil.WriteFile(targetFileName, formatted, 0744)
 	if err != nil {
 		return err
@@ -294,7 +341,31 @@ func (t *TargetType) Abbr() string {
 	return strings.ToLower(string(t.Name[0]))
 }
 
-func (t *TargetType) Methods() []string {
+func (t *TargetType) hasMethod(methodName string) bool {
+	for _, method := range t.Methods() {
+		if strings.ToLower(method) == "all" { return true }
+		if strings.ToLower(methodName) == strings.ToLower(method) { return true }
+	}
+	return false
+}
+
+func (t *TargetType) IsCopy() bool {
+	return t.hasMethod("copy")
+}
+
+func (t *TargetType) IsEquals() bool {
+	return t.hasMethod("equals")
+}
+
+func (t *TargetType) IsDiff() bool {
+	return t.hasMethod("diff")
+}
+
+func (t *TargetType) IsMerge() bool {
+	return t.hasMethod("merge")
+}
+
+func (t *TargetType) Methods() [] string {
 	if t.methods == nil {
 		var m []string
 		for _, method := range methodFlags {
@@ -331,20 +402,6 @@ func (t *TargetType) ExcludedFields() []string {
 
 	}
 	return t.excludedFields
-}
-
-func (t *TargetType) GenEqualsForValues() string {
-	builder := strings.Builder{}
-
-	for _, field := range t.Fields {
-		builder.WriteString(fmt.Sprintf(
-			"\tif %s.%s != instance.%s return false\n",
-			t.Abbr(),
-			field.Name,
-			field.Name))
-	}
-
-	return builder.String()
 }
 
 func (t *TargetType) visitFields(node ast.Node) bool {

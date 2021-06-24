@@ -29,9 +29,9 @@ func (t *TypeSpecNode) isCopier() bool {
 }
 
 func (g *Generator) analyze() error {
-	if g.file != nil {
-		ast.Inspect(g.file, g.makeGraph)
-		ast.Inspect(g.file, g.analyzeDecl)
+	for _, file := range g.files {
+		ast.Inspect(file, g.makeGraph)
+		ast.Inspect(file, g.analyzeDecl)
 	}
 
 	for _, typeName := range typeNameFlags {

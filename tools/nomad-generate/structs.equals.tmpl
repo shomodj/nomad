@@ -1,8 +1,9 @@
 package structs
 
 {{ range $targetType := .Targets -}}
+{{ if $targetType.IsEquals -}}
 func ({{$targetType.Abbr}} *{{$targetType.Name}}) Equals(other *{{$targetType.Name}}) bool {
-{{- range $field := .Fields }}
+{{ range $field := .Fields }}
     {{- if $field.IsPrimitive }}
     if {{$targetType.Abbr}}.{{$field.Name}} != other.{{$field.Name}} { return false }
     {{- end}}
@@ -16,4 +17,5 @@ func ({{$targetType.Abbr}} *{{$targetType.Name}}) Equals(other *{{$targetType.Na
 
     return true
 }
+{{- end }}
 {{- end}}

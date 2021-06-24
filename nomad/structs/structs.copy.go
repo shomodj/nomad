@@ -16,29 +16,44 @@ func (j *Job) Copy() *Job {
 
 	xx.Constraints = make([]*Constraint, len(j.Constraints))
 	for _, v := range j.Constraints {
-		xx.Constraints = append(xx.Constraints, v.Copy())
+		xx.Constraints = append(xx.Constraints, v)
 	}
 
 	xx.Affinities = make([]*Affinity, len(j.Affinities))
 	for _, v := range j.Affinities {
-		xx.Affinities = append(xx.Affinities, v.Copy())
+		xx.Affinities = append(xx.Affinities, v)
 	}
 
 	xx.Spreads = make([]*Spread, len(j.Spreads))
 	for _, v := range j.Spreads {
-		xx.Spreads = append(xx.Spreads, v.Copy())
+		xx.Spreads = append(xx.Spreads, v)
 	}
 
 	xx.TaskGroups = make([]*TaskGroup, len(j.TaskGroups))
 	for _, v := range j.TaskGroups {
-		xx.TaskGroups = append(xx.TaskGroups, v.Copy())
+		xx.TaskGroups = append(xx.TaskGroups, v)
 	}
 
-	xx.Multiregion = j.Multiregion.Copy()
+	if j.Multiregion == nil {
+		xx.Multiregion = nil
+	} else {
+		xx.Multiregion = new(pointer)
+		*xx.Multiregion = *j.Multiregion
+	}
 
-	xx.Periodic = j.Periodic.Copy()
+	if j.Periodic == nil {
+		xx.Periodic = nil
+	} else {
+		xx.Periodic = new(pointer)
+		*xx.Periodic = *j.Periodic
+	}
 
-	xx.ParameterizedJob = j.ParameterizedJob.Copy()
+	if j.ParameterizedJob == nil {
+		xx.ParameterizedJob = nil
+	} else {
+		xx.ParameterizedJob = new(pointer)
+		*xx.ParameterizedJob = *j.ParameterizedJob
+	}
 
 	xx.Payload = make([]byte, len(j.Payload))
 	for _, v := range j.Payload {

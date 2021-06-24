@@ -14,11 +14,12 @@ func setupEnv() {
 		"-type=Job",
 		"-exclude=Job.Stop",
 		"-exclude=Job.CreateIndex",
-		"-method=Job.all",
-		"-method=Job.Equals",
-		"-method=Job.Copy",
-		"-method=Job.Diff",
-		"-method=Job.Merge",
+		"-method=Job.All",
+		//"-method=Job.Equals",
+		//"-method=Job.Copy",
+		//"-method=Job.Diff",
+		//"-method=Job.Merge",
+		"-packageName=github.com/hashicorp/nomad/nomad/structs",
 	}
 }
 

@@ -1,6 +1,7 @@
 package structs
 
 func (j *Job) Equals(other *Job) bool {
+
 	if j.Region != other.Region {
 		return false
 	}
