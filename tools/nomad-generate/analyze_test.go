@@ -30,4 +30,9 @@ func TestAnalyze_Copy(t *testing.T) {
 
 	require.True(g.typeSpecs["AppleWithReferenceFields"].isCopier())
 	require.False(g.typeSpecs["BananaWithOnlyValueFields"].isCopier())
+	require.True(g.typeSpecs["CarrotWithCopyMethod"].isCopier())
+	require.False(g.typeSpecs["OrangeWithEqualsMethod"].isCopier())
+	require.False(g.typeSpecs["Fig"].isCopier())
+	require.False(g.typeSpecs["Grapefruit"].isCopier())
+
 }

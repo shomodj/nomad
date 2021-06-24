@@ -130,18 +130,10 @@ func (g *Generator) needsCopyMethod(t *ast.TypeSpec) bool {
 		return false
 	}
 	for _, field := range expr.Fields.List {
-		switch expr := field.Type.(type) {
+		switch field.Type.(type) {
 		case *ast.StarExpr:
-			i, ok := expr.X.(*ast.Ident)
-			if ok {
-				child, ok := g.typeSpecs[i.Name]
-				if ok {
-					if child.isCopier() {
-						ts.setIsCopier()
-						return true
-					}
-				}
-			}
+			ts.setIsCopier()
+			return true
 		case *ast.StructType:
 			return false // TODO: how do we get the type name here?
 		case *ast.MapType, *ast.ArrayType:

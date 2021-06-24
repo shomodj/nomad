@@ -20,7 +20,11 @@ func ({{$old}} *{{$targetType.Name}}) Copy() *{{$targetType.Name}} {
     {{ $nf := printf "xx.%s" $field.Name }}
     {{ $of := printf "%s.%s" $old $field.Name }}
 
-    {{- if or $field.IsPointer $field.IsStruct }}
+    {{- if $field.IsPointer }}
+      {{ $nf }} = {{ $of }}.Copy()
+    {{- end}}
+
+    {{- if $field.IsStruct }}
       {{ if $field.IsCopier }}
         {{ $nf }} = {{ $of }}.Copy()
       {{ else }}
