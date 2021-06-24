@@ -4,9 +4,6 @@ import (
 	"go/ast"
 )
 
-var excludedFields stringSliceFlag
-var typeNames stringSliceFlag
-
 // TypeSpecNode is used to create a tree of typespecs and track if they
 // implement (or need to implement) the Copy method.
 type TypeSpecNode struct {
