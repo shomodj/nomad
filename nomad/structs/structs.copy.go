@@ -11,22 +11,22 @@ func (j *Job) Copy() *Job {
 	xx.Datacenters = helper.CopySliceString(j.Datacenters)
 
 	xx.Constraints = make([]*Constraint, len(j))
-	for _, v := range jConstraints {
+	for _, v := range j.Constraints {
 		xx.Constraints = append(xx.Constraints, v.Copy())
 	}
 
 	xx.Affinities = make([]*Affinity, len(j))
-	for _, v := range jAffinities {
+	for _, v := range j.Affinities {
 		xx.Affinities = append(xx.Affinities, v.Copy())
 	}
 
 	xx.Spreads = make([]*Spread, len(j))
-	for _, v := range jSpreads {
+	for _, v := range j.Spreads {
 		xx.Spreads = append(xx.Spreads, v.Copy())
 	}
 
 	xx.TaskGroups = make([]*TaskGroup, len(j))
-	for _, v := range jTaskGroups {
+	for _, v := range j.TaskGroups {
 		xx.TaskGroups = append(xx.TaskGroups, v.Copy())
 	}
 
