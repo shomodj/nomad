@@ -18,12 +18,6 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-var g *Generator
-var excludedFieldFlags stringSliceFlag
-var typeNameFlags stringSliceFlag
-var methodFlags stringSliceFlag
-var packageName string
-
 type stringSliceFlag []string
 
 func (s *stringSliceFlag) String() string {
@@ -36,14 +30,16 @@ func (s *stringSliceFlag) Set(value string) error {
 }
 
 func main() {
-	run()
-}
 
-func run() {
+	var excludedFieldFlags stringSliceFlag
+	var typeNameFlags stringSliceFlag
+	var methodFlags stringSliceFlag
+	var packageName string
+
 	flag.Var(&excludedFieldFlags, "exclude", "list of Fields to exclude from Copy")
 	flag.Var(&typeNameFlags, "type", "types for which to generate Copy methodFlags")
 	flag.Var(&methodFlags, "method", "methodFlags to generate - defaults to all")
-	flag.StringVar(&packageName, "packageName", "./","The source dir to target")
+	flag.StringVar(&packageName, "packageName", "./", "The source dir to target")
 	flag.Parse()
 
 	if len(typeNameFlags) == 0 {
@@ -51,34 +47,49 @@ func run() {
 		os.Exit(2)
 	}
 
-	g = &Generator{
-		typeSpecs: map[string]*TypeSpecNode{},
+	g := &Generator{
+		packageName:    packageName,
+		typeNames:      typeNameFlags,
+		methods:        methodFlags,
+		excludedFields: excludedFieldFlags,
+		typeSpecs:      map[string]*TypeSpecNode{},
 	}
-
-	var err error
-	var pkgs []*packages.Package
-	if pkgs, err = loadPackages(); err != nil {
-		fmt.Println(fmt.Sprintf("error loading packages: %v", err))
-		os.Exit(2)
-	}
-
-	if err = parsePackages(pkgs);  err != nil {
-		fmt.Println(fmt.Sprintf("error parsing packages: %v", err))
-		os.Exit(2)
-	}
-
-	if err = g.analyze(); err != nil {
-		fmt.Println(fmt.Sprintf("error analyzing: %v", err))
-		os.Exit(2)
-	}
-
-	if err = g.generate(); err != nil {
-		fmt.Println(fmt.Sprintf("error generating: %v", err))
+	err := run(g)
+	if err != nil {
+		fmt.Println(err)
 		os.Exit(2)
 	}
 }
 
-func loadPackages() ([]*packages.Package, error) {
+func run(g *Generator) error {
+
+	var err error
+	var pkgs []*packages.Package
+	if pkgs, err = g.loadPackages(); err != nil {
+		return fmt.Errorf("error loading packages: %v", err)
+	}
+
+	if err = g.parsePackages(pkgs); err != nil {
+		return fmt.Errorf("error parsing packages: %v", err)
+	}
+	if len(pkgs) == 0 {
+		return fmt.Errorf("did not parse any packages")
+	}
+
+	if err = g.analyze(); err != nil {
+		return fmt.Errorf("error analyzing: %v", err)
+	}
+	if len(g.typeSpecs) == 0 {
+		return fmt.Errorf("did not analyze any types")
+	}
+
+	if err = g.generate(); err != nil {
+		return fmt.Errorf("error generating: %v", err)
+	}
+	return nil
+}
+
+func (g *Generator) loadPackages() ([]*packages.Package, error) {
 	const loadMode = packages.NeedName |
 		packages.NeedFiles |
 		packages.NeedCompiledGoFiles |
@@ -92,11 +103,11 @@ func loadPackages() ([]*packages.Package, error) {
 		packages.NeedModule
 
 	cfg := &packages.Config{Mode: loadMode}
-	pkgs, err := packages.Load(cfg, packageName)
+	pkgs, err := packages.Load(cfg, g.packageName)
 	return pkgs, err
 }
 
-func parsePackages(pkgs []*packages.Package) error {
+func (g *Generator) parsePackages(pkgs []*packages.Package) error {
 	for _, pkg := range pkgs {
 
 		if len(pkg.Errors) > 0 {
@@ -126,8 +137,8 @@ func parsePackages(pkgs []*packages.Package) error {
 
 							switch typeSpec.Type.(type) {
 							case *ast.StructType:
-								if isTarget(typeSpec.Name.Name) {
-									t := &TargetType{Name: typeSpec.Name.Name}
+								if g.isTarget(typeSpec.Name.Name) {
+									t := &TargetType{Name: typeSpec.Name.Name, g: g}
 									g.Targets = append(g.Targets, t)
 									ast.Inspect(file, t.visitFields)
 								}
@@ -142,9 +153,11 @@ func parsePackages(pkgs []*packages.Package) error {
 	return nil
 }
 
-func isTarget(name string) bool {
-	for _, typeName := range typeNameFlags {
-		if name == typeName { return true}
+func (g *Generator) isTarget(name string) bool {
+	for _, typeName := range g.typeNames {
+		if name == typeName {
+			return true
+		}
 	}
 	return false
 }
@@ -152,15 +165,20 @@ func isTarget(name string) bool {
 // Generator holds the state of the analysis. Primarily used to buffer
 // the output for format.Source.
 type Generator struct {
-	files      []*ast.File
-	Targets   []*TargetType
-	typeSpecs map[string]*TypeSpecNode
+	packageName string
+	files       []*ast.File
+	Targets     []*TargetType
+	typeSpecs   map[string]*TypeSpecNode
+
+	typeNames      []string
+	methods        []string
+	excludedFields []string
 }
 
 func (g *Generator) generate() error {
 	var err error
 	if err = g.render("copy"); err != nil {
-		fmt.Printf("could not render copy: %v\n", err)
+		return errors.New(fmt.Sprintf("generate.copy: %v", err))
 	}
 
 	if err = g.render("equals"); err != nil {
@@ -225,6 +243,7 @@ type TargetField struct {
 	ValueType *TargetField // the type of a map or array value
 
 	isCopier bool // does this type implement Copy
+	g        *Generator
 }
 
 func (f *TargetField) IsPrimitive() bool {
@@ -279,11 +298,12 @@ func (f *TargetField) resolveType(node ast.Node) bool {
 						elemTypeName = ident
 					}
 
-					ts := g.typeSpecs[ident]
+					ts := f.g.typeSpecs[ident]
 
 					f.ValueType = &TargetField{
 						TypeName: elemTypeName,
 						isCopier: ts != nil && ts.isCopier(),
+						g:        f.g,
 					}
 
 				case *ast.MapType:
@@ -301,25 +321,27 @@ func (f *TargetField) resolveType(node ast.Node) bool {
 						valueTypeName = ident
 					}
 
-					ts := g.typeSpecs[ident]
+					ts := f.g.typeSpecs[ident]
 					f.ValueType = &TargetField{
 						TypeName: valueTypeName,
 						isCopier: ts != nil && ts.isCopier(),
+						g:        f.g,
 					}
 					f.KeyType = &TargetField{
 						TypeName: t.Key.(*ast.Ident).Name,
+						g:        f.g,
 					}
 
 				case *ast.StructType:
 					f.TypeName = "struct"
 					// TODO: where can we get the Ident from?
-					//ts := g.typeSpecs[ident]
+					//ts := f.g.typeSpecs[ident]
 					//f.isCopier = ts != nil && ts.isCopier()
 
 				case *ast.StarExpr:
 					f.TypeName = "pointer"
 					ident := t.X.(*ast.Ident).Name
-					ts := g.typeSpecs[ident]
+					ts := f.g.typeSpecs[ident]
 					f.isCopier = ts != nil && ts.isCopier()
 				}
 			}
@@ -335,6 +357,7 @@ type TargetType struct {
 	methods        []string
 	excludedFields []string
 	Fields         []*TargetField
+	g              *Generator
 }
 
 func (t *TargetType) Abbr() string {
@@ -343,8 +366,12 @@ func (t *TargetType) Abbr() string {
 
 func (t *TargetType) hasMethod(methodName string) bool {
 	for _, method := range t.Methods() {
-		if strings.ToLower(method) == "all" { return true }
-		if strings.ToLower(methodName) == strings.ToLower(method) { return true }
+		if strings.ToLower(method) == "all" {
+			return true
+		}
+		if strings.ToLower(methodName) == strings.ToLower(method) {
+			return true
+		}
 	}
 	return false
 }
@@ -365,10 +392,10 @@ func (t *TargetType) IsMerge() bool {
 	return t.hasMethod("merge")
 }
 
-func (t *TargetType) Methods() [] string {
+func (t *TargetType) Methods() []string {
 	if t.methods == nil {
 		var m []string
-		for _, method := range methodFlags {
+		for _, method := range t.g.methods {
 			if strings.Contains(method, t.Name) {
 				md := strings.TrimPrefix(method, fmt.Sprintf("%s.", t.Name))
 				m = append(m, md)
@@ -388,7 +415,7 @@ func (t *TargetType) Methods() [] string {
 func (t *TargetType) ExcludedFields() []string {
 	if t.excludedFields == nil {
 		var e []string
-		for _, excludedField := range excludedFieldFlags {
+		for _, excludedField := range t.g.excludedFields {
 			if strings.Index(excludedField, t.Name) > -1 {
 				e = append(e, strings.TrimPrefix(excludedField, fmt.Sprintf("%s.", t.Name)))
 			}
@@ -415,7 +442,7 @@ func (t *TargetType) visitFields(node ast.Node) bool {
 					continue
 				}
 
-				targetField := &TargetField{Name: field.Names[0].Name, Field: field}
+				targetField := &TargetField{Name: field.Names[0].Name, Field: field, g: t.g}
 				t.Fields = append(t.Fields, targetField)
 				ast.Inspect(field, targetField.resolveType)
 			}

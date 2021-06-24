@@ -34,7 +34,7 @@ func (g *Generator) analyze() error {
 		ast.Inspect(file, g.analyzeDecl)
 	}
 
-	for _, typeName := range typeNameFlags {
+	for _, typeName := range g.typeNames {
 		// we already know these types need Copy to be copied, because the
 		// user asked us to generate their Copy methods!
 		g.typeSpecs[typeName].setIsCopier()

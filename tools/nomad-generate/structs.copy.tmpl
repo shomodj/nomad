@@ -5,6 +5,7 @@ import (
 )
 
 {{ range $targetType := .Targets -}}
+{{ if $targetType.IsCopy -}}
 {{ $old := $targetType.Abbr }}
 func ({{$old}} *{{$targetType.Name}}) Copy() *{{$targetType.Name}} {
 
@@ -73,4 +74,5 @@ func ({{$old}} *{{$targetType.Name}}) Copy() *{{$targetType.Name}} {
 {{- end }}
 	return xx
 }
+{{- end}}
 {{- end}}

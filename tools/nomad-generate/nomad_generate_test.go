@@ -3,34 +3,31 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-func setupEnv() {
-	os.Setenv("GOFILE", "structs.go")
-	os.Args = []string{
-		"generate",
-		"-type=Job",
-		"-exclude=Job.Stop",
-		"-exclude=Job.CreateIndex",
-		"-method=Job.All",
-		//"-method=Job.Equals",
-		//"-method=Job.Copy",
-		//"-method=Job.Diff",
-		//"-method=Job.Merge",
-		"-packageName=github.com/hashicorp/nomad/nomad/structs",
-	}
-}
-
 func TestGenerate(t *testing.T) {
-	setupEnv()
-	main()
+	g := &Generator{
+		typeNames:      []string{"Job"},
+		packageName:    "github.com/hashicorp/nomad/nomad/structs",
+		methods:        []string{"Job.All"},
+		excludedFields: []string{"Job.Stop", "Job.CreateIndex"},
+		typeSpecs:      map[string]*TypeSpecNode{},
+	}
+	err := run(g)
+	require.NoError(t, err)
 }
 
 func TestFieldResolveType(t *testing.T) {
-	setupEnv()
-	main()
+	g := &Generator{
+		typeNames:      []string{"Job"},
+		packageName:    "github.com/hashicorp/nomad/nomad/structs",
+		methods:        []string{"Job.All"},
+		excludedFields: []string{"Job.Stop", "Job.CreateIndex"},
+		typeSpecs:      map[string]*TypeSpecNode{},
+	}
 
 	var jobTarget *TargetType
 

@@ -4,6 +4,8 @@ type Basket struct {
 	ID    string
 	Index int
 
+	Exclude *AppleWithReferenceFields
+
 	ApplePtr  *AppleWithReferenceFields
 	BananaPtr *BananaWithOnlyValueFields
 	CarrotPtr *CarrotWithCopyMethod
