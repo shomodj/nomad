@@ -20,10 +20,13 @@ import (
 
 //go:embed structs.copy.tmpl
 var copyTmpl embed.FS
+
 //go:embed structs.equals.tmpl
 var equalsTmpl embed.FS
+
 //go:embed structs.diff.tmpl
 var diffTmpl embed.FS
+
 //go:embed structs.merge.tmpl
 var mergeTmpl embed.FS
 
@@ -38,8 +41,20 @@ func (s *stringSliceFlag) Set(value string) error {
 	return nil
 }
 
-func main() {
+// Generator holds the state of the analysis. Primarily used to buffer
+// the output for format.Source.
+type Generator struct {
+	packageDir string
+	files      []*ast.File
+	Targets    map[string]*TargetType
+	typeSpecs  map[string]*TypeSpecNode
 
+	typeNames      []string
+	methods        []string
+	excludedFields []string
+}
+
+func main() {
 	var excludedFieldFlags stringSliceFlag
 	var typeNameFlags stringSliceFlag
 	var methodFlags stringSliceFlag
@@ -63,6 +78,7 @@ func main() {
 		excludedFields: excludedFieldFlags,
 		typeSpecs:      map[string]*TypeSpecNode{},
 	}
+
 	err := run(g)
 	if err != nil {
 		fmt.Println(err)
@@ -71,9 +87,9 @@ func main() {
 }
 
 func run(g *Generator) error {
-
 	var err error
 	var pkgs []*packages.Package
+
 	if pkgs, err = g.loadPackages(); err != nil {
 		return fmt.Errorf("error loading packages: %v", err)
 	}
@@ -81,6 +97,7 @@ func run(g *Generator) error {
 	if err = g.parsePackages(pkgs); err != nil {
 		return fmt.Errorf("error parsing packages: %v", err)
 	}
+
 	if len(pkgs) == 0 {
 		return fmt.Errorf("did not parse any packages")
 	}
@@ -88,6 +105,7 @@ func run(g *Generator) error {
 	if err = g.analyze(); err != nil {
 		return fmt.Errorf("error analyzing: %v", err)
 	}
+
 	if len(g.typeSpecs) == 0 {
 		return fmt.Errorf("did not analyze any types")
 	}
@@ -95,10 +113,12 @@ func run(g *Generator) error {
 	if err = g.generate(); err != nil {
 		return fmt.Errorf("error generating: %v", err)
 	}
+
 	return nil
 }
 
 func (g *Generator) loadPackages() ([]*packages.Package, error) {
+	// TODO: See which of these we really need
 	const loadMode = packages.NeedName |
 		packages.NeedFiles |
 		packages.NeedCompiledGoFiles |
@@ -112,58 +132,103 @@ func (g *Generator) loadPackages() ([]*packages.Package, error) {
 		packages.NeedModule
 
 	cfg := &packages.Config{
-		Dir: g.packageDir,
+		Dir:  g.packageDir, // this is the relative path to the source we want to parse
 		Mode: loadMode,
 	}
 
-	pkgs, err := packages.Load(cfg, ".")
+	pkgs, err := packages.Load(cfg, ".") // this pattern means load all go files
 	return pkgs, err
 }
 
 func (g *Generator) parsePackages(pkgs []*packages.Package) error {
 	for _, pkg := range pkgs {
-
+		// TODO: Iterate and compose error
 		if len(pkg.Errors) > 0 {
 			return pkg.Errors[0]
 		}
 
 		for _, goFile := range pkg.GoFiles {
-			// Create the AST by parsing src.
-			fileSet := token.NewFileSet() // positions are relative to fset
-			file, err := parser.ParseFile(fileSet, goFile, nil, 0)
-			if err != nil {
-				fmt.Printf("could not parse file: %v\n", err)
-				os.Exit(2)
-			}
-
-			g.files = append(g.files, file)
-
-			for _, node := range file.Decls {
-				switch node.(type) {
-
-				case *ast.GenDecl:
-					genDecl := node.(*ast.GenDecl)
-					for _, spec := range genDecl.Specs {
-						switch spec.(type) {
-						case *ast.TypeSpec:
-							typeSpec := spec.(*ast.TypeSpec)
-
-							switch typeSpec.Type.(type) {
-							case *ast.StructType:
-								if g.isTarget(typeSpec.Name.Name) {
-									t := &TargetType{Name: typeSpec.Name.Name, g: g}
-									g.Targets = append(g.Targets, t)
-									ast.Inspect(file, t.visitFields)
-								}
-							}
-						}
-					}
-				}
+			if err := g.parseGoFile(goFile); err != nil {
+				return err
 			}
 		}
 	}
 
 	return nil
+}
+
+func (g *Generator) parseGoFile(goFile string) error {
+	// Create the AST by parsing src.
+	fileSet := token.NewFileSet() // positions are relative to fset
+	file, err := parser.ParseFile(fileSet, goFile, nil, 0)
+	if err != nil {
+		fmt.Printf("could not parse file: %v\n", err)
+		os.Exit(2)
+	}
+
+	g.files = append(g.files, file)
+
+	// Gather targets
+	for _, node := range file.Decls {
+		switch t := node.(type) {
+		case *ast.GenDecl:
+			g.evaluateTarget(t)
+		}
+	}
+
+	// Evaluate which methods targets already have
+	for _, node := range file.Decls {
+		switch t := node.(type) {
+		case *ast.FuncDecl:
+			g.evaluateTargetMethods(t)
+		}
+	}
+
+	return nil
+}
+
+func (g *Generator) evaluateTarget(genDecl *ast.GenDecl) {
+	for _, spec := range genDecl.Specs {
+		switch spec.(type) {
+		case *ast.TypeSpec:
+			typeSpec := spec.(*ast.TypeSpec)
+
+			switch typeSpec.Type.(type) {
+			case *ast.StructType:
+				if g.isTarget(typeSpec.Name.Name) {
+					t := &TargetType{Name: typeSpec.Name.Name, g: g}
+					g.Targets[t.Name] = t
+					ast.Inspect(spec, t.visitFields)
+				}
+			}
+		}
+	}
+}
+
+var evaluateMethods = []string{"Copy", "Equals", "Diff", "Merge"}
+
+func (g *Generator) evaluateTargetMethods(funcDecl *ast.FuncDecl) {
+	if funcDecl.Recv != nil {
+		for _, method := range evaluateMethods {
+			if method == funcDecl.Name.Name {
+				g.evaluateExistingMethod(funcDecl, funcDecl.Name.Name)
+			}
+		}
+	}
+}
+
+func (g *Generator) evaluateExistingMethod(funcDecl *ast.FuncDecl, methodName string) {
+	var methodRecv string
+	if stex, ok := funcDecl.Recv.List[0].Type.(*ast.StarExpr); ok {
+		methodRecv = stex.X.(*ast.Ident).Name
+	} else if id, ok := funcDecl.Recv.List[0].Type.(*ast.Ident); ok {
+		methodRecv = id.Name
+	}
+
+	target, ok := g.Targets[methodRecv]
+	if ok {
+		target.ExistingMethods = append(target.ExistingMethods, funcDecl.Name.Name)
+	}
 }
 
 func (g *Generator) isTarget(name string) bool {
@@ -173,19 +238,6 @@ func (g *Generator) isTarget(name string) bool {
 		}
 	}
 	return false
-}
-
-// Generator holds the state of the analysis. Primarily used to buffer
-// the output for format.Source.
-type Generator struct {
-	packageDir string
-	files      []*ast.File
-	Targets    []*TargetType
-	typeSpecs  map[string]*TypeSpecNode
-
-	typeNames      []string
-	methods        []string
-	excludedFields []string
 }
 
 func (g *Generator) generate() error {
@@ -381,18 +433,19 @@ func (f *TargetField) resolveType(node ast.Node) bool {
 }
 
 type TargetType struct {
-	Name           string // Name of the type we're generating methods for
-	methods        []string
-	excludedFields []string
-	Fields         []*TargetField
-	g              *Generator
+	Name            string // Name of the type we're generating methods for
+	methods         []string
+	excludedFields  []string
+	Fields          []*TargetField
+	ExistingMethods []string
+	g               *Generator
 }
 
 func (t *TargetType) Abbr() string {
 	return strings.ToLower(string(t.Name[0]))
 }
 
-func (t *TargetType) hasMethod(methodName string) bool {
+func (t *TargetType) targetsMethod(methodName string) bool {
 	for _, method := range t.Methods() {
 		if strings.ToLower(method) == "all" {
 			return true
@@ -404,20 +457,29 @@ func (t *TargetType) hasMethod(methodName string) bool {
 	return false
 }
 
+func (t *TargetType) needsMethod(methodName string) bool {
+	for _, existing := range t.ExistingMethods {
+		if existing == methodName {
+			return false
+		}
+	}
+	return true
+}
+
 func (t *TargetType) IsCopy() bool {
-	return t.hasMethod("copy")
+	return t.targetsMethod("copy") && t.needsMethod("Copy")
 }
 
 func (t *TargetType) IsEquals() bool {
-	return t.hasMethod("equals")
+	return t.targetsMethod("equals") && t.needsMethod("Equals")
 }
 
 func (t *TargetType) IsDiff() bool {
-	return t.hasMethod("diff")
+	return t.targetsMethod("diff") && t.needsMethod("Diff")
 }
 
 func (t *TargetType) IsMerge() bool {
-	return t.hasMethod("merge")
+	return t.targetsMethod("merge") && t.needsMethod("Merge")
 }
 
 func (t *TargetType) Methods() []string {
