@@ -11,11 +11,11 @@ func TestGenerate_Equals(t *testing.T) {
 	require := require.New(t)
 
 	g := &Generator{
-		typeNames:      []string{"Job"},
-		packageDir:     "../../nomad/structs",
-		methods:        []string{"Job.All"},
-		excludedFields: []string{"Job.Payload"},
-		typeSpecs:      map[string]*TypeSpecNode{},
+		typeNames:  []string{"Service"},
+		packageDir: "../../nomad/structs",
+		methods:    []string{"Service.Equals"},
+		// excludedFields: []string{"Job.Payload", "Job.Stop", "Job.CreateIndex"},
+		typeSpecs: map[string]*TypeSpecNode{},
 	}
 	pkgs, err := g.loadPackages()
 	require.NoError(err)
@@ -34,28 +34,38 @@ func TestGenerate_Equals(t *testing.T) {
 	formatted := g.format(buf.Bytes())
 	got := string(formatted)
 
-	require.Contains(got, "if j.ID != other.ID {")
-	require.Contains(got, "if j.Dispatched != other.Dispatched {")
+	require.Contains(got, "if s.Name != other.Name {")
+	require.Contains(got, "if s.TaskName != other.TaskName {")
 
-	// TODO: is this "&" right?
-	require.Contains(got, "if !j.Multiregion.Equals(&other.Multiregion) {")
+	require.Contains(got, "if !s.Connect.Equals(other.Connect) {")
 
-	// TODO: this is a struct, is this right?
-	require.Contains(got, "if j.Update != other.Update {")
+	// TODO: need a struct member
+	// require.Contains(got, "if !s.Foo.Equals(other.Foo) {")
 
-	// TODO: missing this
-	// require.Contains(got, `
-	// for i, v := range j.Datacenters {
-	// 	if v != other.Datacenters[i] {
-	// 		return false
-	// `)
+	require.Contains(got, `
+	for i, v := range s.Tags {
+		if v != other.Tags[i] {
+			return false
+		}
+	}`)
 
-	// TODO: missing this
-	// require.Contains(got, `
-	// for i, v := range j.TaskGroups {
-	// 	if !v.Equals(other.TaskGroups[i]) {
-	// 		return false
-	// `)
+	require.Contains(got, `
+	for i, v := range s.Checks {
+		if !v.Equals(other.Checks[i]) {
+			return false
+		}
+	}`)
+
+	require.Contains(got, `
+	for k, v := range s.Meta {
+		v2, ok := other.Meta[k]
+		if !ok {
+			return false
+		}
+		if v != v2 {
+			return false
+		}
+	}`)
 }
 
 func TestGenerate_Copy(t *testing.T) {

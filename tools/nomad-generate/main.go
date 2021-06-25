@@ -300,7 +300,7 @@ func (f *TargetField) resolveType(node ast.Node) bool {
 					expr, ok := t.Elt.(*ast.StarExpr)
 					if ok {
 						ident = expr.X.(*ast.Ident).Name
-						elemTypeName = "*" + ident
+						elemTypeName = "pointer"
 					} else {
 						ident = t.Elt.(*ast.Ident).Name
 						elemTypeName = ident
@@ -323,7 +323,7 @@ func (f *TargetField) resolveType(node ast.Node) bool {
 					expr, ok := t.Value.(*ast.StarExpr)
 					if ok {
 						ident = expr.X.(*ast.Ident).Name
-						valueTypeName = "*" + ident
+						valueTypeName = "pointer"
 					} else {
 						ident = t.Value.(*ast.Ident).Name
 						valueTypeName = ident
@@ -460,12 +460,10 @@ func (t *TargetType) visitFields(node ast.Node) bool {
 }
 
 func (t *TargetType) fieldIsExcluded(name string) bool {
-
 	for _, exclude := range t.ExcludedFields() {
 		if exclude == name {
 			return true
 		}
 	}
-
 	return false
 }
