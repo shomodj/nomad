@@ -28,7 +28,7 @@ func TestGenerate_Equals(t *testing.T) {
 
 	// this is g.render without writing to disk
 	var buf bytes.Buffer
-	err = g.write(&buf, "./structs.equals.tmpl", g)
+	err = g.write(&buf, equalsTmpl)
 	require.NoError(err)
 
 	formatted := g.format(buf.Bytes())
@@ -80,7 +80,7 @@ func TestGenerate_Copy(t *testing.T) {
 
 	// this is g.render without writing to disk
 	var buf bytes.Buffer
-	err = g.write(&buf, "./structs.copy.tmpl", g)
+	err = g.write(&buf, copyTmpl)
 	require.NoError(err)
 
 	formatted := g.format(buf.Bytes())

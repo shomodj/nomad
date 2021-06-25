@@ -29,9 +29,37 @@ func (t *TypeSpecNode) isCopier() bool {
 }
 
 func (g *Generator) analyze() error {
+
+	// need to generate the graph so that we know if *any* types are
+	// Copy/Equal *before* we create the TargetTypes
 	for _, file := range g.files {
 		ast.Inspect(file, g.makeGraph)
 		ast.Inspect(file, g.analyzeDecl)
+	}
+
+	for _, file := range g.files {
+		for _, node := range file.Decls {
+			switch node.(type) {
+
+			case *ast.GenDecl:
+				genDecl := node.(*ast.GenDecl)
+				for _, spec := range genDecl.Specs {
+					switch spec.(type) {
+					case *ast.TypeSpec:
+						typeSpec := spec.(*ast.TypeSpec)
+
+						switch typeSpec.Type.(type) {
+						case *ast.StructType:
+							if g.isTarget(typeSpec.Name.Name) {
+								t := &TargetType{Name: typeSpec.Name.Name, g: g}
+								g.Targets = append(g.Targets, t)
+								ast.Inspect(file, t.visitFields)
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	for _, typeName := range g.typeNames {

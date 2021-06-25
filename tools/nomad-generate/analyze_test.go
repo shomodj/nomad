@@ -12,7 +12,7 @@ func TestAnalyze_Copy(t *testing.T) {
 	require := require.New(t)
 
 	g := &Generator{
-		packageDir:     "github.com/hashicorp/nomad/tools/nomad-generate/main",
+		packageDir:     "../../nomad/structs",
 		typeNames:      []string{"Job"},
 		methods:        []string{"Job.Copy"},
 		excludedFields: []string{"Payload"},
@@ -44,8 +44,8 @@ func TestAnalyze_Copy(t *testing.T) {
 
 func TestParse_FieldResolveType(t *testing.T) {
 	g := &Generator{
+		packageDir:     "../../nomad/structs",
 		typeNames:      []string{"Job"},
-		packageName:    "github.com/hashicorp/nomad/nomad/structs",
 		methods:        []string{"Job.All"},
 		excludedFields: []string{"Job.Payload"},
 		typeSpecs:      map[string]*TypeSpecNode{},

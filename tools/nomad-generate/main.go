@@ -20,10 +20,13 @@ import (
 
 //go:embed structs.copy.tmpl
 var copyTmpl embed.FS
+
 //go:embed structs.equals.tmpl
 var equalsTmpl embed.FS
+
 //go:embed structs.diff.tmpl
 var diffTmpl embed.FS
+
 //go:embed structs.merge.tmpl
 var mergeTmpl embed.FS
 
@@ -112,7 +115,7 @@ func (g *Generator) loadPackages() ([]*packages.Package, error) {
 		packages.NeedModule
 
 	cfg := &packages.Config{
-		Dir: g.packageDir,
+		Dir:  g.packageDir,
 		Mode: loadMode,
 	}
 
@@ -137,29 +140,6 @@ func (g *Generator) parsePackages(pkgs []*packages.Package) error {
 			}
 
 			g.files = append(g.files, file)
-
-			for _, node := range file.Decls {
-				switch node.(type) {
-
-				case *ast.GenDecl:
-					genDecl := node.(*ast.GenDecl)
-					for _, spec := range genDecl.Specs {
-						switch spec.(type) {
-						case *ast.TypeSpec:
-							typeSpec := spec.(*ast.TypeSpec)
-
-							switch typeSpec.Type.(type) {
-							case *ast.StructType:
-								if g.isTarget(typeSpec.Name.Name) {
-									t := &TargetType{Name: typeSpec.Name.Name, g: g}
-									g.Targets = append(g.Targets, t)
-									ast.Inspect(file, t.visitFields)
-								}
-							}
-						}
-					}
-				}
-			}
 		}
 	}
 
