@@ -73,7 +73,7 @@ func TestGenerate_Copy(t *testing.T) {
 
 	g := &Generator{
 		typeNames:      []string{"Job"},
-		packageDir:     "github.com/hashicorp/nomad/nomad/structs",
+		packageDir:     "../../nomad/structs",
 		methods:        []string{"Job.All"},
 		excludedFields: []string{"Job.Payload"},
 		typeSpecs:      map[string]*TypeSpecNode{},

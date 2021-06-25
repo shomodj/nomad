@@ -246,6 +246,7 @@ type TargetField struct {
 	Name     string
 	Field    *ast.Field
 	TypeName string
+	Kind     string
 
 	KeyType   *TargetField // the type of a map key
 	ValueType *TargetField // the type of a map or array value
@@ -259,19 +260,19 @@ func (f *TargetField) IsPrimitive() bool {
 }
 
 func (f *TargetField) IsArray() bool {
-	return f.TypeName == "array"
+	return f.Kind == "array"
 }
 
 func (f *TargetField) IsStruct() bool {
-	return f.TypeName == "struct"
+	return f.Kind == "struct"
 }
 
 func (f *TargetField) IsPointer() bool {
-	return f.TypeName == "pointer"
+	return f.Kind == "pointer"
 }
 
 func (f *TargetField) IsMap() bool {
-	return f.TypeName == "map"
+	return f.Kind == "map"
 }
 
 func (f *TargetField) IsCopier() bool {
@@ -286,51 +287,58 @@ func (f *TargetField) resolveType(node ast.Node) bool {
 				switch t := node.(*ast.Field).Type.(type) {
 				case *ast.Ident:
 					f.TypeName = node.(*ast.Field).Type.(*ast.Ident).Name
+					f.Kind = f.TypeName
 					// For direct struct references (not pointers) the type
 					// Name will be returned so we correct it here.
 					if !f.IsPrimitive() {
-						f.TypeName = "struct"
+						f.Kind = "struct"
 					}
 				case *ast.ArrayType:
-					f.TypeName = "array"
+					f.Kind = "array"
 
 					var elemTypeName string
 					var ident string
-
+					var kind string
 					expr, ok := t.Elt.(*ast.StarExpr)
 					if ok {
 						ident = expr.X.(*ast.Ident).Name
-						elemTypeName = "pointer"
+						elemTypeName = "*" + ident
+						kind = "pointer"
 					} else {
 						ident = t.Elt.(*ast.Ident).Name
 						elemTypeName = ident
+						kind = ident
 					}
 
 					ts := f.g.typeSpecs[ident]
 
 					f.ValueType = &TargetField{
+						Kind:     kind,
 						TypeName: elemTypeName,
 						isCopier: ts != nil && ts.isCopier(),
 						g:        f.g,
 					}
 
 				case *ast.MapType:
-					f.TypeName = "map"
-
+					f.Kind = "map"
 					var valueTypeName string
 					var ident string
+					var kind string
 
 					expr, ok := t.Value.(*ast.StarExpr)
 					if ok {
 						ident = expr.X.(*ast.Ident).Name
-						valueTypeName = "pointer"
+						valueTypeName = "*" + ident
+						kind = "pointer"
 					} else {
 						ident = t.Value.(*ast.Ident).Name
 						valueTypeName = ident
+						kind = ident
 					}
 
 					ts := f.g.typeSpecs[ident]
 					f.ValueType = &TargetField{
+						Kind:     kind,
 						TypeName: valueTypeName,
 						isCopier: ts != nil && ts.isCopier(),
 						g:        f.g,
@@ -341,13 +349,13 @@ func (f *TargetField) resolveType(node ast.Node) bool {
 					}
 
 				case *ast.StructType:
-					f.TypeName = "struct"
+					f.Kind = "struct"
 					// TODO: where can we get the Ident from?
 					//ts := f.g.typeSpecs[ident]
 					//f.isCopier = ts != nil && ts.isCopier()
 
 				case *ast.StarExpr:
-					f.TypeName = "pointer"
+					f.Kind = "pointer"
 					ident := t.X.(*ast.Ident).Name
 					ts := f.g.typeSpecs[ident]
 					f.isCopier = ts != nil && ts.isCopier()
