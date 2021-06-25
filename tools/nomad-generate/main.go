@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,13 +11,21 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"text/template"
 
 	"golang.org/x/tools/go/packages"
 )
+
+//go:embed structs.copy.tmpl
+var copyTmpl embed.FS
+//go:embed structs.equals.tmpl
+var equalsTmpl embed.FS
+//go:embed structs.diff.tmpl
+var diffTmpl embed.FS
+//go:embed structs.merge.tmpl
+var mergeTmpl embed.FS
 
 type stringSliceFlag []string
 
@@ -30,10 +39,6 @@ func (s *stringSliceFlag) Set(value string) error {
 }
 
 func main() {
-	for _, element := range os.Environ() {
-		variable := strings.Split(element, "=")
-		fmt.Println(variable[0],"=>",variable[1])
-	}
 
 	var excludedFieldFlags stringSliceFlag
 	var typeNameFlags stringSliceFlag
@@ -194,11 +199,11 @@ func (g *Generator) generate() error {
 	}
 
 	//if err = g.render("diff"); err != nil {
-	//	fmt.Printf("could not render diff: %v\n", err)
+	//	return errors.New(fmt.Sprintf("generate.diff: %v", err))
 	//}
-	//
+
 	//if err = g.render("merge"); err != nil {
-	//	fmt.Printf("could not render merge: %v\n", err)
+	//	return errors.New(fmt.Sprintf("generate.merge: %v", err))
 	//}
 
 	return nil
@@ -206,18 +211,30 @@ func (g *Generator) generate() error {
 
 func (g *Generator) render(targetFunc string) error {
 	var err error
-	targetFileName := fmt.Sprintf("../../nomad/structs/structs.%s.go", targetFunc)
+	targetFileName := fmt.Sprintf("./structs.%s.go", targetFunc)
+
+	var templateFile embed.FS
+
+	switch targetFunc {
+	case "copy":
+		templateFile = copyTmpl
+	case "equals":
+		templateFile = equalsTmpl
+	case "diff":
+		templateFile = diffTmpl
+	case "merge":
+		templateFile = mergeTmpl
+	}
 
 	var buf bytes.Buffer
-	err = g.write(&buf, fmt.Sprintf("./structs.%s.tmpl", targetFunc), g)
+	err = g.write(&buf, templateFile)
 	if err != nil {
 		return err
 	}
 
 	formatted := g.format(buf.Bytes())
 
-	// TODO: replace ioutil
-	err = ioutil.WriteFile(targetFileName, formatted, 0744)
+	err = os.WriteFile(targetFileName, formatted, 0744)
 	if err != nil {
 		return err
 	}
@@ -225,12 +242,15 @@ func (g *Generator) render(targetFunc string) error {
 	return nil
 }
 
-func (g *Generator) write(w io.Writer, fileName string, data interface{}) error {
-	tmpl, err := template.ParseFiles(fileName)
-	if err != nil {
-		return err
+func (g *Generator) write(w io.Writer, file embed.FS) error {
+	if len(g.Targets) < 1 {
+		return errors.New("generate.render.write: no targets found")
 	}
-	return tmpl.Execute(w, data)
+	tmpl, err := template.ParseFS(file, "*")
+	if err != nil {
+		return errors.New(fmt.Sprintf("generate.render.write: %v", err))
+	}
+	return tmpl.Execute(w, g)
 }
 
 func (g *Generator) format(buf []byte) []byte {
